@@ -1,6 +1,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
 import { getAuth } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { getFirestore } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+import { getStorage } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
 
 const firebaseConfig = {
     apiKey: "AIzaSyDi4lqp8VnQK6OCWdTJ7nLg0MekDtuQqoY",
@@ -12,13 +13,14 @@ const firebaseConfig = {
     measurementId: "G-CGR9LQ8GJ3"
 };
 
-export let app, auth, db;
+export let app, auth, db, storage;
 
 export function initializeFirebase() {
     try {
         app = initializeApp(firebaseConfig);
         auth = getAuth(app);
         db = getFirestore(app);
+        storage = getStorage(app);
     } catch (e) {
         console.error("Firebase init failed:", e);
         alert("Could not connect to the game server. Please check your Firebase configuration.");

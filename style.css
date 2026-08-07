@@ -26,6 +26,15 @@ body {
 .bingo-cell.marked {
     transform: scale(1.05);
 }
+.social-cell {
+    align-items: flex-start !important;
+    overflow-y: auto;
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+.social-cell::-webkit-scrollbar {
+    display: none;
+}
 .modal-backdrop {
     position: fixed;
     top: 0;
@@ -87,5 +96,4 @@ body {
 .overflow-y-auto::-webkit-scrollbar-thumb:hover {
     background: #6b7280; /* bg-gray-500 */
 }
-
 

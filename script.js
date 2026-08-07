@@ -1,8 +1,9 @@
 import { initializeFirebase, auth, db } from './firebase.js';
-import { assignUIElements, ui, updateAuthUI, openAuthModal, setupAuthModal, showView, showMessage, switchTab, renderInviteModal } from './ui.js';
+import { assignUIElements, ui, updateAuthUI, openAuthModal, setupAuthModal, showView, showMessage, switchTab, renderInviteModal, switchLeaderboardMode } from './ui.js';
 import { handleAuthSubmit, handleLogout } from './auth.js';
 import * as game from './game.js';
 import * as friends from './friends.js';
+import * as profile from './profile.js';
 import { onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 import { getDoc, doc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
@@ -10,10 +11,17 @@ import { getDoc, doc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-
 export let state = {
     currentUser: null,
     gameId: null,
+    gameMode: 'phrase',
     playerId: null,
     isRegisterMode: false,
+    leaderboardMode: 'friends',
+    leaderboardData: [],
+    friendsList: [],
+    currentPlayers: [],
+    currentGameData: null,
     unsubscribe: {}
 };
+
 
 // --- Entry Point ---
 function init() {
@@ -22,7 +30,8 @@ function init() {
     initializeFirebase();
 
     onAuthStateChanged(auth, async user => {
-        if (state.unsubscribe.user) state.unsubscribe.user();
+        if (state.unsubscribe.friendsUser) state.unsubscribe.friendsUser();
+        if (state.unsubscribe.gameUser) state.unsubscribe.gameUser();
 
         if (user) {
             const userDocRef = doc(db, "users", user.uid);
@@ -49,7 +58,12 @@ function setupEventListeners() {
     const appContainer = document.getElementById('app');
 
     appContainer.addEventListener('click', (event) => {
-        const target = event.target.closest('button');
+        if (event.target.classList.contains('modal-backdrop')) {
+            event.target.classList.add('hidden');
+            return;
+        }
+
+        const target = event.target.closest('button, [data-action]');
         if (!target) return;
 
         const handleBackToHome = () => {
@@ -63,12 +77,35 @@ function setupEventListeners() {
         const action = target.dataset.action || target.id;
         switch (action) {
             // Main Navigation
-            case 'go-to-create-btn': showView('create'); break;
+            case 'go-to-create-btn': showView('mode'); break;
+            case 'select-phrase-bingo': 
+                state.gameMode = 'phrase';
+                showView('create'); 
+                break;
+            case 'select-classic-bingo':
+                state.gameMode = 'classic';
+                showView('create');
+                break;
+            case 'select-social-bingo':
+                state.gameMode = 'social';
+                showView('create');
+                break;
             case 'go-to-join-btn': showView('join'); break;
             case 'back-to-home-btn': handleBackToHome(); break;
             
             case 'leaderboard-tab-btn': switchTab('leaderboard'); break;
             case 'friends-tab-btn': switchTab('friends'); break;
+
+            case 'global-leaderboard-btn':
+                state.leaderboardMode = 'global';
+                switchLeaderboardMode('global');
+                game.renderLeaderboard();
+                break;
+            case 'friends-leaderboard-btn':
+                state.leaderboardMode = 'friends';
+                switchLeaderboardMode('friends');
+                game.renderLeaderboard();
+                break;
 
             // Auth Navigation & Modals
             case 'login-btn-nav': openAuthModal(false); break;
@@ -76,6 +113,7 @@ function setupEventListeners() {
             case 'logout-btn': handleLogout(); break;
             case 'friend-requests-btn': friends.openFriendRequestsModal(); break;
             case 'game-invites-btn': friends.openGameInvitesModal(); break;
+            case 'open-profile': profile.openProfileModal(); break;
             
             // Join/Create Flow
             case 'create-game-btn': game.createNewGame(); break;
@@ -93,6 +131,7 @@ function setupEventListeners() {
             // In-Game Actions
             case 'copy-game-id-btn': game.copyGameId(); break;
             case 'bingo-btn': game.checkBingo(); break;
+            case 'draw-next': game.drawNextItem(); break;
 
             // Friend Actions
             case 'friend-search-btn': 
@@ -110,6 +149,23 @@ function setupEventListeners() {
                 break;
             case 'accept-game-invite': friends.acceptGameInvite(target.dataset.gameId); break;
             case 'decline-game-invite': friends.declineGameInvite(target.dataset.gameId); break;
+            
+            // Social Actions
+            case 'submit-draft-btn':
+                import('./social.js').then(s => s.submitDraftBoard());
+                break;
+            case 'prev-board-btn':
+                import('./social.js').then(s => s.handlePrevBoard());
+                break;
+            case 'next-board-btn':
+                import('./social.js').then(s => s.handleNextBoard());
+                break;
+            case 'force-start-btn':
+                import('./social.js').then(s => s.forceStartGame());
+                break;
+            case 'submit-evidence-btn':
+                import('./jury.js').then(j => j.submitEvidence());
+                break;
             
             // Generic Modal Actions
             case 'close': target.closest('.modal-backdrop').classList.add('hidden'); break;
@@ -154,4 +210,3 @@ function handleRouting() {
 }
 
 document.addEventListener('DOMContentLoaded', init);
-

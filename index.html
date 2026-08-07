@@ -27,7 +27,8 @@
                 <div class="flex-1 flex justify-end">
                     <div id="auth-container" class="text-right z-10">
                         <div id="user-info" class="hidden items-center gap-4">
-                            <span id="user-display-name" class="text-sm text-gray-300"></span>
+                            <span id="user-display-name" class="text-sm text-gray-300 cursor-pointer hover:text-white transition" data-action="open-profile"></span>
+                            <button id="profile-btn" data-action="open-profile" class="bg-purple-600 text-white text-xs font-bold py-1 px-3 rounded hover:bg-purple-700 transition">Profile</button>
                             <button id="game-invites-btn" class="hidden relative bg-blue-600 text-white text-xs font-bold py-1 px-3 rounded hover:bg-blue-700 transition">
                                 Invites
                                 <span id="game-invites-count" class="absolute -top-2 -right-2 bg-red-500 text-white text-xs font-bold rounded-full h-5 w-5 flex items-center justify-center">0</span>
@@ -64,8 +65,12 @@
                     <button id="leaderboard-tab-btn" class="flex-1 font-bold py-2 px-4 rounded-t-lg bg-gray-800 border-b-2 border-blue-500">🏆 Leaderboard</button>
                     <button id="friends-tab-btn" class="flex-1 font-bold py-2 px-4 text-gray-400">👥 Friends</button>
                 </div>
-                <div id="leaderboard-panel" class="bg-gray-800 p-4 rounded-lg shadow-md h-[32rem] overflow-y-auto">
-                    <div id="leaderboard"></div>
+                <div id="leaderboard-panel" class="bg-gray-800 p-4 rounded-lg shadow-md h-[32rem] overflow-y-auto flex flex-col">
+                    <div class="flex border-b border-gray-700 mb-4 flex-shrink-0">
+                        <button id="global-leaderboard-btn" class="flex-1 text-sm font-bold py-1 px-2 text-gray-400">Global</button>
+                        <button id="friends-leaderboard-btn" class="flex-1 text-sm font-bold py-1 px-2 border-b-2 border-blue-500 text-blue-500">Friends Only</button>
+                    </div>
+                    <div id="leaderboard" class="flex-grow overflow-y-auto"></div>
                 </div>
                 <div id="friends-panel" class="hidden bg-gray-800 p-4 rounded-lg shadow-md h-[32rem] overflow-y-auto">
                     <div class="flex items-center space-x-2 mb-4">
@@ -81,20 +86,54 @@
             </div>
         </div>
 
+        <!-- Mode Selection View -->
+        <div id="mode-game-view" class="hidden flex-col items-center justify-center flex-grow py-12">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-6xl w-full">
+                <!-- Phrase Bingo -->
+                <button id="select-phrase-bingo-btn" data-action="select-phrase-bingo" class="bg-gray-800 border-2 border-blue-500 rounded-xl p-8 flex flex-col items-center hover:bg-gray-700 transition transform hover:-translate-y-1 hover:shadow-lg hover:shadow-blue-500/20">
+                    <span class="text-4xl mb-4">💬</span>
+                    <h3 class="text-2xl font-bold text-white mb-2">Phrase Bingo</h3>
+                    <p class="text-gray-400 text-center">Create a custom board with inside jokes, quotes, or common phrases.</p>
+                </button>
+                
+                <!-- Classic Bingo -->
+                <button id="select-classic-bingo-btn" data-action="select-classic-bingo" class="bg-gray-800 border-2 border-green-500 rounded-xl p-8 flex flex-col items-center hover:bg-gray-700 transition transform hover:-translate-y-1 hover:shadow-lg hover:shadow-green-500/20">
+                    <span class="text-4xl mb-4">🎰</span>
+                    <h3 class="text-2xl font-bold text-white mb-2">Classic Bingo</h3>
+                    <p class="text-gray-400 text-center">Randomly drawn items. Players can only mark what has been called!</p>
+                </button>
+
+                <!-- Social Bingo -->
+                <button id="select-social-bingo-btn" data-action="select-social-bingo" class="bg-gray-800 border-2 border-purple-500 rounded-xl p-8 flex flex-col items-center hover:bg-gray-700 transition transform hover:-translate-y-1 hover:shadow-lg hover:shadow-purple-500/20">
+                    <span class="text-4xl mb-4">👥</span>
+                    <h3 class="text-xl font-bold text-white mb-2 text-center leading-tight">Wasn't on my bingo this year</h3>
+                    <p class="text-gray-400 text-center">Draft custom predictions. Jury reviews and votes on evidence!</p>
+                </button>
+            </div>
+        </div>
+
         <!-- Create Game View -->
         <div id="create-game-view" class="hidden flex flex-col flex-grow">
             <div class="flex flex-col lg:flex-row gap-8 flex-grow">
                 <div class="flex-grow flex flex-col">
                     <div class="flex flex-col md:flex-row gap-4 mt-8 flex-grow min-h-0">
-                        <div class="flex-grow bg-gray-800 p-6 rounded-lg shadow-md flex flex-col">
+                        <div id="common-phrases-input-container" class="flex-grow bg-gray-800 p-6 rounded-lg shadow-md flex flex-col">
                             <label for="phrases-input" class="block text-sm font-medium text-gray-300 mb-2">Common Phrases (at least 25)</label>
                             <textarea id="phrases-input" class="w-full p-3 border border-gray-600 rounded-md bg-gray-700 flex-grow" placeholder="One per line..."></textarea>
                             <p id="phrase-count" class="text-sm text-gray-400 mt-2 text-left">0 phrases</p>
                         </div>
-                        <div class="w-full md:w-1/3 bg-gray-800 p-6 rounded-lg shadow-md flex flex-col">
+                        <div id="rare-phrases-input-container" class="w-full md:w-1/3 bg-gray-800 p-6 rounded-lg shadow-md flex flex-col">
                             <label for="rare-phrases-input" class="block text-sm font-medium text-purple-400 mb-2">Ultra Rare Phrases (at least 5)</label>
                             <textarea id="rare-phrases-input" class="w-full p-3 border border-gray-600 rounded-md bg-gray-700 flex-grow" placeholder="One per line..."></textarea>
                             <p id="rare-phrase-count" class="text-sm text-gray-400 mt-2 text-left">0 phrases</p>
+                        </div>
+                        
+                        <!-- Social Mode Explanation -->
+                        <div id="social-mode-explanation" class="hidden flex-grow bg-gray-800 p-6 rounded-lg shadow-md flex-col justify-center items-center text-center">
+                            <h3 class="text-3xl font-bold text-purple-400 mb-4">Ready to Draft?</h3>
+                            <p class="text-gray-300 text-lg mb-4 max-w-lg">In "Wasn't on my bingo this year", you don't need to provide phrases right now.</p>
+                            <p class="text-gray-300 text-lg mb-4 max-w-lg">Once you create the game and invite your friends, everyone will enter the <span class="font-bold text-blue-400">Drafting Phase</span> to write their own hyper-specific predictions.</p>
+                            <p class="text-gray-400">Click below to create the lobby and get the invite link!</p>
                         </div>
                     </div>
                     <p id="error-message" class="text-red-500 mt-4 text-sm h-5 text-center"></p>
@@ -145,14 +184,93 @@
              <button id="go-to-my-card-btn" class="mt-6 bg-green-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-green-700 transition">Go to My Bingo Card</button>
         </div>
 
+        <!-- Draft Game View (Social Mode) -->
+        <div id="draft-game-view" class="hidden flex-grow flex flex-col items-center py-8">
+            <h2 class="text-3xl font-bold mb-4 text-purple-400">Draft Your Board</h2>
+            <p class="text-gray-300 text-center max-w-2xl mb-2">Fill in your 25 hyper-specific predictions. The lobby will vote to veto generic ones!</p>
+            <div class="bg-gray-800 p-4 rounded-lg mb-6 max-w-2xl text-sm border-l-4 border-blue-500">
+                <p class="font-bold mb-1">Multi-Condition Rule:</p>
+                <p>At least 5 of your squares MUST contain multiple conditions using the word <span class="font-bold text-blue-400">"and"</span> or <span class="font-bold text-blue-400">"ו"</span> (e.g., "A billionaire goes to space AND the rocket malfunctions").</p>
+                <p class="mt-2 text-gray-400">Multi-condition squares: <span id="multi-condition-count" class="font-bold text-red-500">0 / 5</span></p>
+            </div>
+            
+            <div id="draft-board-container" class="grid grid-cols-1 md:grid-cols-5 gap-2 w-full max-w-6xl mb-6">
+                <!-- 25 textareas will be injected here via JS -->
+            </div>
+            
+            <div class="flex gap-4">
+                <button id="submit-draft-btn" class="bg-green-600 text-white font-bold py-3 px-8 rounded-lg hover:bg-green-700 transition opacity-50 cursor-not-allowed" disabled>Submit Board & Ready Up</button>
+            </div>
+            <p id="draft-error-msg" class="text-red-500 mt-4 text-sm h-5"></p>
+        </div>
+
+        <!-- Social Lobby & Veto View -->
+        <div id="lobby-game-view" class="hidden flex-grow flex flex-col p-4 md:p-8">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-3xl font-bold text-blue-400">Game Lobby</h2>
+                <div id="manager-controls" class="hidden flex gap-2">
+                    <button id="force-start-btn" class="bg-green-600 hover:bg-green-700 text-white font-bold py-2 px-4 rounded transition">Start Game Now</button>
+                </div>
+            </div>
+            
+            <div class="grid grid-cols-1 lg:grid-cols-3 gap-8 flex-grow">
+                <div class="lg:col-span-1 flex flex-col">
+                    <h3 class="text-2xl font-bold mb-4">Players</h3>
+                    <div id="lobby-players-list" class="bg-gray-800 p-4 rounded-lg shadow-md flex-grow overflow-y-auto space-y-2 h-[30rem]">
+                        <!-- Player readiness and kick buttons -->
+                    </div>
+                </div>
+                
+                <div class="lg:col-span-2 flex flex-col">
+                    <h3 class="text-2xl font-bold mb-4 text-purple-400">Anonymous Jury Review</h3>
+                    <p class="text-gray-400 mb-4">Review submitted boards. If a square is too generic or guaranteed, VETO it.</p>
+                    <div class="flex border-b border-gray-700 mb-4">
+                        <button id="prev-board-btn" class="px-4 py-2 bg-gray-800 text-gray-300 hover:text-white disabled:opacity-50">&larr; Prev Board</button>
+                        <div id="current-board-label" class="flex-grow text-center py-2 font-bold text-gray-400">Board 1 of X</div>
+                        <button id="next-board-btn" class="px-4 py-2 bg-gray-800 text-gray-300 hover:text-white disabled:opacity-50">Next Board &rarr;</button>
+                    </div>
+                    
+                    <div id="veto-board-container" class="grid grid-cols-1 md:grid-cols-5 gap-2 w-full flex-grow">
+                        <!-- Anonymous squares to review -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <!--board-game-view-->
         <div id="board-game-view" class="hidden flex-grow">
-            <div class="grid grid-cols-1 lg:grid-cols-[200px_1fr_256px] gap-8 h-full">
-                <div class="order-2 lg:order-1 flex flex-col">
-                     <h2 class="text-2xl font-bold text-center mb-4 text-purple-400">Ultra Rare</h2>
-                     <div id="rare-phrases-container" class="bg-gray-800 p-4 rounded-lg shadow-md space-y-3 h-[34rem] overflow-y-auto"></div>
+            <div id="board-grid-container" class="grid grid-cols-1 lg:grid-cols-[200px_1fr_256px] gap-8 h-full">
+                
+                <!-- Column 1: Active Claims (Only visible in Social or Phrase w/ Voting) -->
+                <div id="board-col-claims" class="hidden order-3 lg:order-1 flex flex-col">
+                     <div id="active-claims-section" class="hidden flex flex-col flex-grow">
+                         <h2 class="text-2xl font-bold text-center mb-4 text-yellow-400">Active Claims</h2>
+                         <div id="active-claims-list" class="bg-gray-800 p-4 rounded-lg shadow-md space-y-3 h-[34rem] overflow-y-auto"></div>
+                     </div>
                 </div>
-                <div class="order-1 lg:order-2">
+
+                <!-- Column 2: Caller / Ultra Rare -->
+                <div id="board-col-rare" class="order-2 lg:order-2 flex flex-col">
+                     <!-- Phrase Mode: Ultra Rare -->
+                     <div id="rare-phrases-section" class="flex flex-col h-fit">
+                         <h2 class="text-2xl font-bold text-center mb-4 text-purple-400">Ultra Rare</h2>
+                         <div id="rare-phrases-container" class="bg-gray-800 p-4 rounded-lg shadow-md space-y-3 max-h-[34rem] overflow-y-auto"></div>
+                     </div>
+                     
+                     <!-- Classic Mode: Caller UI -->
+                     <div id="caller-ui-section" class="hidden flex flex-col flex-grow">
+                         <h2 class="text-2xl font-bold text-center mb-4 text-green-400">Caller</h2>
+                         <div class="bg-gray-800 p-4 rounded-lg shadow-md flex flex-col items-center mb-4">
+                             <p class="text-sm text-gray-400 mb-2">Current Draw</p>
+                             <div id="current-draw-display" class="text-2xl font-bold text-white text-center min-h-[4rem] flex items-center justify-center mb-4 break-words w-full">--</div>
+                             <button id="draw-next-btn" data-action="draw-next" class="hidden w-full bg-green-600 text-white font-bold py-3 px-4 rounded-lg hover:bg-green-700 transition transform hover:scale-105">Draw Next</button>
+                         </div>
+                         <h3 class="text-lg font-bold text-gray-300 mb-2">Previous Draws</h3>
+                         <div id="previous-draws-container" class="bg-gray-800 p-4 rounded-lg shadow-md space-y-2 h-[20rem] overflow-y-auto text-center text-gray-300"></div>
+                     </div>
+                </div>
+                
+                <div class="order-1 lg:order-3">
                     <p class="text-sm text-gray-400 text-center mb-4">
                         Game ID: <span id="game-id-display" class="font-mono bg-gray-700 px-2 py-1 rounded"></span> 
                         <button id="copy-game-id-btn" class="ml-2 text-xs bg-blue-600 text-white font-bold py-1 px-2 rounded hover:bg-blue-700 transition">Copy</button>
@@ -165,11 +283,13 @@
                     </div>
                      <p class="text-sm text-gray-400 mt-8 text-center">
                         Playing as: <strong id="player-name-display" class="font-mono bg-gray-700 px-2 py-1 rounded"></strong>
-                        <span class="mx-2">|</span>
-                        Score: <strong id="player-score-display" class="font-mono bg-gray-700 px-2 py-1 rounded">0</strong>
+                        <span id="score-display-wrapper">
+                            <span class="mx-2">|</span>
+                            Score: <strong id="player-score-display" class="font-mono bg-gray-700 px-2 py-1 rounded">0</strong>
+                        </span>
                      </p>
                 </div>
-                <div class="order-3 lg:order-3 flex flex-col">
+                <div class="order-4 lg:order-4 flex flex-col">
                      <h2 class="text-2xl font-bold text-center mb-4">Live Progress</h2>
                      <div id="live-players-container" class="bg-gray-800 p-4 rounded-lg shadow-md h-[45rem] overflow-y-auto space-y-4"></div>
                 </div>
@@ -184,14 +304,28 @@
         <div id="friend-requests-modal" class="hidden modal-backdrop bg-black bg-opacity-70"></div>
         <div id="invite-modal" class="hidden modal-backdrop bg-black bg-opacity-70"></div>
         <div id="game-invites-modal" class="hidden modal-backdrop bg-black bg-opacity-70"></div>
+        <div id="profile-modal" class="hidden modal-backdrop bg-black bg-opacity-70"></div>
 
+        <!-- Evidence Modal for Social Mode -->
+        <div id="evidence-modal" class="hidden modal-backdrop fixed inset-0 bg-black bg-opacity-80 flex justify-center items-center p-4 z-50">
+            <div class="bg-gray-800 p-6 rounded-lg w-full max-w-lg shadow-xl relative border border-gray-600">
+                <button class="absolute top-4 right-4 text-gray-400 hover:text-white" data-action="close">
+                    <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                </button>
+                <h3 class="text-2xl font-bold mb-4 text-purple-400">Submit Evidence</h3>
+                <p id="evidence-square-text" class="text-gray-300 italic mb-4 p-2 bg-gray-900 rounded"></p>
+                <p class="text-sm text-gray-400 mb-2">Provide a link (e.g. news article, tweet), an explanation, or upload an image.</p>
+                <textarea id="evidence-input" class="w-full p-3 border border-gray-600 rounded-md bg-gray-700 text-sm h-32 mb-4" placeholder="URL or explanation..."></textarea>
+                <div class="mb-4">
+                    <label class="block text-sm font-medium text-gray-300 mb-1">Optional: Upload Image Proof</label>
+                    <input type="file" id="evidence-image-input" accept="image/*" class="w-full text-sm text-gray-400 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-purple-600 file:text-white hover:file:bg-purple-700">
+                </div>
+                <button id="submit-evidence-btn" class="w-full bg-green-600 text-white font-bold py-3 px-6 rounded-lg hover:bg-green-700 transition">Submit Claim for Review</button>
+                <input type="hidden" id="evidence-square-index">
+            </div>
+        </div>
     </div>
+    
     <script type="module" src="script.js"></script>
 </body>
 </html>
-
-
-
-
-
-
