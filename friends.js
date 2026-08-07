@@ -2,6 +2,7 @@ import { collection, query, where, getDocs, doc, updateDoc, arrayUnion, arrayRem
 import { db } from './firebase.js';
 import { ui, showMessage, updateFriendRequestCount, renderFriendRequestsModal, renderFriendsList, updateGameInviteCount, renderGameInvitesModal, renderGameInvitesList } from './ui.js';
 import { state } from './script.js';
+import * as game from './game.js';
 
 let friendRequestSenders = [];
 let gameInvites = [];
@@ -107,7 +108,7 @@ export async function declineFriendRequest(senderId) {
 
 export function listenForFriendsAndRequests(uid) {
     const userDocRef = doc(db, "users", uid);
-    state.unsubscribe.user = onSnapshot(userDocRef, async (userDoc) => {
+    state.unsubscribe.friendsUser = onSnapshot(userDocRef, async (userDoc) => {
         if (userDoc.exists()) {
             const userData = userDoc.data();
 
@@ -124,6 +125,7 @@ export function listenForFriendsAndRequests(uid) {
             
             // Handle Friends List
             const friends = userData.friends || [];
+            state.friendsList = friends;
             if(friends.length > 0) {
                 const friendPromises = friends.map(id => getDoc(doc(db, "users", id)));
                 const friendDocs = await Promise.all(friendPromises);
@@ -131,6 +133,10 @@ export function listenForFriendsAndRequests(uid) {
                 renderFriendsList(friendsData);
             } else {
                 renderFriendsList([]);
+            }
+            
+            if (state.leaderboardMode === 'friends') {
+                game.renderLeaderboard();
             }
 
             // Handle Game Invites
