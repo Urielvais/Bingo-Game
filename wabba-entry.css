@@ -1,0 +1,7 @@
+.wabba-local-entry { position: fixed; inset: auto 16px max(16px, env(safe-area-inset-bottom)) auto; z-index: 1000; display: flex; gap: 12px; align-items: center; min-height: 58px; padding: 10px 20px; border-radius: 16px; border: 1px solid #8760d8; background: #21172f; color: #f6f1ff; font: 600 15px system-ui; cursor: pointer; box-shadow: 0 0 24px #7642d533; }
+.wabba-age-dialog { width: min(400px, calc(100vw - 32px)); box-sizing: border-box; padding: 24px; background: #21172f; color: #f6f1ff; border: 1px solid #8760d8; border-radius: 16px; font: 16px/1.5 system-ui; }
+.wabba-age-dialog::backdrop { background: #000a; }
+.wabba-age-dialog h2 { font-size: 1.4rem; margin-bottom: 16px; }
+.wabba-age-dialog select { display: block; width: 100%; padding: 12px; margin-top: 12px; background: #141019; color: #f6f1ff; border: 1px solid #a690c9; border-radius: 8px; }
+.wabba-age-dialog button { min-height: 44px; margin: 12px 12px 0 0; padding: 10px 16px; border-radius: 8px; background: #7641cb; color: white; cursor: pointer; }
+.wabba-local-entry:focus-visible, .wabba-age-dialog :focus-visible { outline: 3px solid #b8e63a; outline-offset: 4px; }

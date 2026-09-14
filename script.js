@@ -1,4 +1,5 @@
 import { initializeFirebase, auth, db } from './firebase.js';
+import { setupWabba } from './wabba.js';
 import { assignUIElements, ui, updateAuthUI, openAuthModal, setupAuthModal, showView, showMessage, switchTab, renderInviteModal, switchLeaderboardMode } from './ui.js';
 import { handleAuthSubmit, handleLogout } from './auth.js';
 import * as game from './game.js';
@@ -28,6 +29,7 @@ function init() {
     assignUIElements();
     setupEventListeners();
     initializeFirebase();
+    setupWabba(auth);
 
     onAuthStateChanged(auth, async user => {
         if (state.unsubscribe.friendsUser) state.unsubscribe.friendsUser();
