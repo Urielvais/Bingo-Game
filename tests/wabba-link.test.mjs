@@ -21,7 +21,7 @@ function storage() {
   };
 }
 
-function setup(configOverrides = {}, { failMount = false, failSdk = false } = {}) {
+function setup(configOverrides = {}, { failMount = false, failSdk = false, stallSdk = false } = {}) {
   const local = storage();
   const requests = [];
   const flows = new Map();
@@ -30,6 +30,13 @@ function setup(configOverrides = {}, { failMount = false, failSdk = false } = {}
   let failFinish = false;
   let rejectStart = false;
   const transport = async (url, options) => {
+    assert.equal(options.method, 'POST');
+    assert.equal(options.credentials, 'omit', 'game cookies must never accompany adapter calls');
+    assert.equal(options.redirect, 'error', 'a redirect must not forward Firebase authentication');
+    assert.equal(options.headers['Content-Type'], 'application/json');
+    assert.match(options.headers.Authorization, /^Bearer token-[a-z]+$/);
+    assert.ok(options.signal instanceof AbortSignal, 'every request must have cancellation/timeout');
+    assert.equal(options.signal.aborted, false);
     const body = JSON.parse(options.body);
     const uid = options.headers.Authorization.slice('Bearer token-'.length);
     requests.push({ url, uid, body });
@@ -59,7 +66,11 @@ function setup(configOverrides = {}, { failMount = false, failSdk = false } = {}
     let adult;
     let connect;
     let mounts = 0;
+    let sdkMounts = 0;
+    let timerId = 0;
     const assets = [];
+    const scripts = [];
+    const timers = new Map();
     const context = {
       wabbaConfig: configOverrides === null ? null : { enabled: true, webOrigin: 'https://wabba.test', adapterOrigin: 'https://adapter.test', ...configOverrides },
       mountWabbaEntry: callback => {
@@ -69,17 +80,24 @@ function setup(configOverrides = {}, { failMount = false, failSdk = false } = {}
       localStorage: local, sessionStorage: session,
       crypto: { randomUUID }, Date: { now: () => now },
       URL, AbortSignal, fetch: transport,
+      setTimeout: (callback, delay) => { const id = ++timerId; timers.set(id, { callback, delay }); return id; },
+      clearTimeout: id => timers.delete(id),
       window: { WabbaConnect: { mount: options => {
         if (failSdk) { failSdk = false; throw new Error('SDK initialization failed'); }
+        sdkMounts += 1;
         connect = options.connect;
       } } },
-      document: { createElement: () => ({ dataset: {}, remove() {} }), head: { append: script => { assets.push(script.src); script.onload(); } } },
+      document: {
+        createElement: () => ({ dataset: {}, removed: false, remove() { this.removed = true; } }),
+        head: { append: script => { assets.push(script.src); scripts.push(script); if (!stallSdk) script.onload(); } },
+      },
     };
     runInNewContext(`${source}\nglobalThis.testAPI = { setupWabba, finishWabba };`, context);
     context.testAPI.setupWabba(auth);
     return {
-      session, auth, assets,
+      session, auth, assets, scripts, timers,
       mountCount: () => mounts,
+      sdkMountCount: () => sdkMounts,
       setupAgain: () => context.testAPI.setupWabba(auth),
       async start() { if (!connect) await adult(); return connect({ signal: AbortSignal.timeout(15000) }); },
       finish: callback => context.testAPI.finishWabba(auth, callback),
@@ -94,6 +112,7 @@ function setup(configOverrides = {}, { failMount = false, failSdk = false } = {}
     loseStartResponse: () => { failStart = true; },
     loseFinishResponse: () => { failFinish = true; },
     rejectNextStart: () => { rejectStart = true; },
+    allowSdkLoad: () => { stallSdk = false; },
     expire: () => { now += 16 * 60 * 1000; },
   };
 }
@@ -242,4 +261,45 @@ test('SDK initialization failure rejects instead of hanging the age gate and per
   await game.start();
   assert.equal(game.assets.length, 2);
   assert.equal(f.requests.length, 1);
+  assert.equal(game.timers.size, 0);
+});
+
+test('stalled SDK load times out once, ignores late callbacks and permits a fresh retry', async () => {
+  const f = setup({}, { stallSdk: true });
+  const game = f.tab();
+  const attempt = game.start();
+  const rejected = assert.rejects(attempt, /took too long to load/);
+  assert.equal(game.timers.size, 1);
+  const deadline = [...game.timers.values()][0];
+  assert.equal(deadline.delay, 15000);
+  const script = game.scripts[0];
+  const lateLoad = script.onload;
+  const lateError = script.onerror;
+  deadline.callback();
+  await rejected;
+  assert.equal(game.timers.size, 0);
+  assert.equal(script.removed, true);
+  assert.equal(script.onload, null);
+  assert.equal(script.onerror, null);
+  assert.equal(game.sdkMountCount(), 0);
+  assert.equal(f.requests.length, 0);
+  lateLoad(); lateError(); deadline.callback();
+  assert.equal(game.sdkMountCount(), 0);
+  f.allowSdkLoad();
+  await game.start();
+  assert.equal(game.scripts.length, 2);
+  assert.equal(game.sdkMountCount(), 1);
+  assert.equal(game.timers.size, 0);
+  assert.equal(f.requests.length, 1);
+  lateLoad(); lateError();
+  assert.equal(game.sdkMountCount(), 1);
+  assert.equal(f.requests.length, 1);
+});
+
+test('start and finish both use cookie-free bearer transport with redirect protection and a signal', async () => {
+  const f = setup();
+  const started = await f.tab().start();
+  await f.tab().finish(f.callback(started.state));
+  // The transport above asserts the real adapter options on both requests.
+  assert.deepEqual(f.requests.map(request => new URL(request.url).pathname), ['/wabba/link/start', '/wabba/link/finish']);
 });

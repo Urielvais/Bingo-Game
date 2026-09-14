@@ -108,17 +108,32 @@ function loadLauncher(auth) {
     script.src = `${config.webOrigin}/sdk/wabba-connect.v1.js`;
     script.dataset.game = 'bingo';
     script.dataset.autoMount = 'false';
-    script.onerror = () => { script.remove(); reject(new Error('Wabba could not load.')); };
+    let settled = false;
+    let timer;
+    const settle = error => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      script.onload = null;
+      script.onerror = null;
+      if (error) { script.remove(); reject(error); }
+      else resolve();
+    };
+    script.onerror = () => settle(new Error('Wabba could not load. Please try again.'));
     script.onload = () => {
+      // An old request may finish after timeout/removal and a new attempt.
+      if (settled) return;
       try {
         if (!window.WabbaConnect) throw new Error('Wabba could not initialize.');
         window.WabbaConnect.mount({ connect: ({ signal }) => startWabba(auth, signal) });
-        resolve();
+        settle();
       } catch {
-        script.remove(); reject(new Error('Wabba could not initialize. Please try again.'));
+        settle(new Error('Wabba could not initialize. Please try again.'));
       }
     };
-    document.head.append(script);
+    timer = setTimeout(() => settle(new Error('Wabba took too long to load. Please try again.')), 15000);
+    try { document.head.append(script); }
+    catch { settle(new Error('Wabba could not load. Please try again.')); }
   });
 }
 

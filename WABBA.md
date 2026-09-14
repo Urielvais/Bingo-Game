@@ -47,6 +47,8 @@ player or a match for a reward.
 No Wabba assets or API calls are made by this integration before the player
 selects the adult age group. The local age screen is not identity or age
 verification; the Wabba backend must enforce eligibility separately.
+SDK loading has a 15-second deadline so a stalled download releases the age
+screen for retry; late completion of an abandoned load cannot mount the UI.
 
 ## Browser/server contract
 
