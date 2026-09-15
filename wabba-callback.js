@@ -1,6 +1,6 @@
 import { initializeFirebase, auth } from './firebase.js';
 import { onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js';
-import { finishWabba } from './wabba.js';
+import { finishWabba } from './wabba.js?v=widget-20260915-3';
 
 const params = new URLSearchParams(location.search);
 const callback = Object.fromEntries(['state', 'code', 'link_session_id'].map(key => [key, params.get(key)]));

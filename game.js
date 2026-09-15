@@ -3,6 +3,7 @@ import { ref, listAll, deleteObject } from "https://www.gstatic.com/firebasejs/1
 import { db, storage } from './firebase.js';
 import { ui, showMessage, showView, renderBingoCard, renderPlayerProgress, renderRarePhrases, renderActiveGamesList, renderWinnerModal, renderCallerUI } from './ui.js';
 import { state } from './script.js';
+import { createWinnerRecord, archiveRecordedGame, retryGameArchive } from './recorded-result.mjs';
 
 export function getPhrasesFromInput() {
     if (!ui.phrasesInput) return [];
@@ -132,6 +133,7 @@ export async function joinGame(pName, pId) {
     try {
         const gameRef = doc(db, "activeGames", state.gameId);
         let gameDoc = await getDoc(gameRef);
+        const endedActiveGameId = gameDoc.exists() ? gameDoc.id : null;
 
         if (!gameDoc.exists()) {
             const pastGameRef = doc(db, "pastGames", state.gameId);
@@ -151,10 +153,13 @@ export async function joinGame(pName, pId) {
 
         // Check if the game is already over
         if (gameData.winner) {
+            // Recover a previously interrupted archive when this ended active
+            // game is revisited. Existing archives never replay statistics.
+            const archived = endedActiveGameId ? await cleanupEndedGame(endedActiveGameId) : true;
             showMessage("Game Over", `This game has already been won by ${gameData.winner}.`);
             
             // Clean up the active game from the user's list
-            if (state.currentUser) {
+            if (state.currentUser && archived) {
                 const userDocRef = doc(db, "users", state.currentUser.uid);
                 await updateDoc(userDocRef, {
                     activeGames: arrayRemove(state.gameId)
@@ -414,7 +419,7 @@ export async function checkBingo() {
             const gameRefForWin = doc(db, "activeGames", state.gameId);
             const gDoc = await transaction.get(gameRefForWin);
             if (!gDoc.data().winner) {
-                transaction.update(gameRefForWin, { winner: winner.name });
+                transaction.update(gameRefForWin, createWinnerRecord(winner, serverTimestamp()));
                 winRecorded = true;
             }
         });
@@ -433,6 +438,33 @@ export async function checkBingo() {
 }
 
 export async function cleanupEndedGame(endedGameId) {
+    const gameRef = doc(db, "activeGames", endedGameId);
+    const pastGameRef = doc(db, "pastGames", endedGameId);
+    let playersSnapshot;
+    let gameData;
+    try {
+        // Capture every participant before this cleanup deletes anything. The
+        // first archive wins; concurrent cleanups cannot replace it with a
+        // snapshot taken after some player documents have been removed.
+        const archived = await retryGameArchive(async () => {
+            playersSnapshot = await getDocs(collection(db, `activeGames/${endedGameId}/players`));
+            const participants = playersSnapshot.docs.map(playerDoc => ({
+                ...playerDoc.data(), id: playerDoc.id,
+            }));
+            return runTransaction(db, transaction => archiveRecordedGame(transaction, {
+                gameRef, archiveRef: pastGameRef, participants, archivedAt: serverTimestamp(),
+            }));
+        });
+        // Another cleanup owns the post-archive work, or it already ran. An
+        // ambiguous commit/rejoin must not increment a player's statistics twice.
+        if (!archived.created) return true;
+        gameData = archived.record;
+    } catch (error) {
+        // Preserve the live records for a retry if archiving did not commit.
+        console.error("Error archiving game; cleanup paused:", error);
+        return false;
+    }
+
     if (storage) {
         try {
             const claimsFolderRef = ref(storage, `activeGames/${endedGameId}/claims`);
@@ -444,26 +476,10 @@ export async function cleanupEndedGame(endedGameId) {
         }
     }
 
-    const gameRef = doc(db, "activeGames", endedGameId);
-    const gameDoc = await getDoc(gameRef);
-    let gameData = null;
-    if (gameDoc.exists()) {
-        gameData = gameDoc.data();
-    }
-
-    const playersSnapshot = await getDocs(collection(db, `activeGames/${endedGameId}/players`));
-    const playersData = [];
-    
     const playerPromises = playersSnapshot.docs.map(async (playerDoc) => {
         const pId = playerDoc.id;
         const pData = playerDoc.data();
         
-        playersData.push({
-            id: pId,
-            playerName: pData.playerName || "Unknown",
-            score: pData.score || 0
-        });
-
         const userDocRef = doc(db, "users", pId);
         try {
             await runTransaction(db, async (transaction) => {
@@ -497,20 +513,12 @@ export async function cleanupEndedGame(endedGameId) {
 
     await Promise.all(playerPromises);
 
-    if (gameData) {
-        try {
-            const pastGameRef = doc(db, "pastGames", endedGameId);
-            await setDoc(pastGameRef, {
-                ...gameData,
-                archivedAt: serverTimestamp(),
-                participants: playersData
-            });
-
-            await deleteDoc(gameRef);
-        } catch (error) {
-            console.error("Error archiving game:", error);
-        }
+    try {
+        await deleteDoc(gameRef);
+    } catch (error) {
+        console.error("Error removing archived game:", error);
     }
+    return true;
 }
 
 export function listenForLeaderboardUpdates() {

@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Phrase Bingo</title>
+    <link id="wabba-entry-styles" rel="stylesheet" href="./wabba-entry.css?v=widget-20260915-3">
     <script src="https://cdn.tailwindcss.com"></script>
     <link rel="stylesheet" href="style.css">
 </head>
@@ -326,6 +327,21 @@
         </div>
     </div>
     
+    <!-- The complete card renders without Firebase or module initialization. -->
+    <aside id="wabba-entry-shell" class="wabba-entry-shell" aria-label="Wabba game connection">
+        <a id="wabba-local-entry" class="wabba-local-entry"
+           href="https://wabba-games.urielvaisfish.chatgpt.site/account?game=bingo"
+           target="_blank" rel="noopener noreferrer"
+           aria-label="Connect to Wabba. Open your account in a new tab.">
+            <img src="./wabba-logo.png" alt="" width="40" height="40">
+            <span class="wabba-entry-text">
+                <strong>Connect to Wabba</strong>
+                <small>Win games. Get gift cards.</small>
+            </span>
+            <span class="wabba-entry-arrow" aria-hidden="true">→</span>
+        </a>
+    </aside>
+    <script type="module" src="wabba-entry.js?v=widget-20260915-3" async></script>
     <script type="module" src="script.js"></script>
 </body>
 </html>

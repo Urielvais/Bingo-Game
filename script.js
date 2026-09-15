@@ -1,5 +1,5 @@
 import { initializeFirebase, auth, db } from './firebase.js';
-import { setupWabba } from './wabba.js';
+import { setupWabba } from './wabba.js?v=widget-20260915-3';
 import { assignUIElements, ui, updateAuthUI, openAuthModal, setupAuthModal, showView, showMessage, switchTab, renderInviteModal, switchLeaderboardMode } from './ui.js';
 import { handleAuthSubmit, handleLogout } from './auth.js';
 import * as game from './game.js';
@@ -32,6 +32,7 @@ function init() {
     setupWabba(auth);
 
     onAuthStateChanged(auth, async user => {
+        setupWabba(auth, { contextReady: true }); // Identity resolved, including sign-out/account switches.
         if (state.unsubscribe.friendsUser) state.unsubscribe.friendsUser();
         if (state.unsubscribe.gameUser) state.unsubscribe.gameUser();
 

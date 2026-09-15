@@ -1,0 +1,19 @@
+:host { all: initial; position: fixed; right: max(16px, env(safe-area-inset-right)); bottom: calc(var(--wabba-bottom-offset, 16px) + env(safe-area-inset-bottom)); z-index: var(--wabba-z-index, 1000); font: 14px/1.45 system-ui, sans-serif; color-scheme: dark; }
+:host([hidden]) { display: none !important; }
+* { box-sizing: border-box; }
+.wabba-card { position: relative; width: min(280px, calc(100vw - 32px)); border: 1px solid #8e6be0; border-radius: 14px; background: linear-gradient(115deg, #28203c, #121626 62%); box-shadow: 0 8px 32px #0006, 0 0 22px #783dff40; }
+a { display: flex; align-items: center; gap: 10px; min-height: 72px; padding: 12px; color: #fff; text-decoration: none; border-radius: 13px; transition: background 160ms ease; }
+a:hover { background: #252238; }
+a:focus-visible, button:focus-visible { outline: 3px solid #a8ee72; outline-offset: 3px; }
+img { width: 40px; height: 40px; object-fit: contain; flex-shrink: 0; }
+strong, small { display: block; }
+strong { font-size: 14px; font-weight: 700; }
+small { color: #c5c0d5; font-size: 12px; margin-top: 2px; }
+.wabba-arrow { margin-left: auto; flex: 0 0 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: #7135db; font-size: 21px; }
+.wabba-status { margin: 0; padding: 0 12px 12px; color: #ded6f4; font-size: 12px; overflow-wrap: anywhere; }
+[hidden] { display: none; }
+a[aria-busy="true"] { cursor: progress; }
+.wabba-close { position: absolute; right: -8px; top: -32px; width: 44px; height: 44px; border: 0; background: transparent; cursor: pointer; font: 22px system-ui, sans-serif; color: #eee9ff; text-shadow: 0 1px 4px #000; }
+.wabba-close::before { content: ""; position: absolute; inset: 10px; z-index: -1; border-radius: 50%; background: #272234; border: 1px solid #7960c9; }
+.wabba-close:hover::before { background: #493364; }
+@media (prefers-reduced-motion: reduce) { a { transition: none; } }

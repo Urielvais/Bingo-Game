@@ -1,4 +1,5 @@
 import { state } from './script.js';
+import { updateWabbaContext } from './wabba.js?v=widget-20260915-3';
 import { db, storage } from './firebase.js';
 import { doc, getDoc, updateDoc, arrayRemove, deleteDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { ref, listAll, deleteObject } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";
@@ -124,6 +125,8 @@ export function setupAuthModal(isRegister) {
 
 
 export function showView(view) {
+    updateWabbaContext({ playing: ['board', 'link', 'draft', 'lobby'].includes(view) ||
+        (view === 'loading' && Boolean(state.gameId)) });
     const viewIds = ['home-game-view', 'mode-game-view', 'create-game-view', 'link-game-view', 'join-game-view', 'board-game-view', 'draft-game-view', 'lobby-game-view', 'loading-spinner'];
     viewIds.forEach(id => {
         const el = document.getElementById(id);

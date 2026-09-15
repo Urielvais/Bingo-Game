@@ -1,11 +1,38 @@
-import { wabbaConfig } from './wabba-config.js';
-import { mountWabbaEntry } from './wabba-age-gate.js';
+import { wabbaConfig } from './wabba-config.js?v=widget-20260915-3';
+import { mountWabbaEntry } from './wabba-entry-view.js?v=widget-20260915-3';
 
 const startKeyFor = uid => `wabba:bingo:start:${uid}`;
 const callbackKeyFor = (uid, state) => `wabba:bingo:callback:${uid}:${state}`;
 const requestKeyPattern = /^[A-Za-z0-9_-]{16,100}$/;
 const statePattern = /^[A-Za-z0-9_-]{43}$/;
 let entryMounted = false;
+let gameAuth = null;
+let entryController = null;
+let storageListening = false;
+const connectedPreferenceKey = uid => `wabba:bingo:connected:${uid}`;
+const connectedInMemory = new Set();
+const launcherContext = { playing: false, connected: false, ready: false };
+
+function syncConnectedContext() {
+  const uid = gameAuth?.currentUser?.uid;
+  let remembered = false;
+  try { remembered = !!uid && localStorage.getItem(connectedPreferenceKey(uid)) === 'true'; } catch { /* UI preference only. */ }
+  launcherContext.connected = !!uid && (connectedInMemory.has(uid) || remembered);
+  entryController?.setContext(launcherContext);
+}
+
+export function updateWabbaContext({ playing } = {}) {
+  if (typeof playing === 'boolean') launcherContext.playing = playing;
+  entryController?.setContext(launcherContext);
+}
+
+function rememberConfirmedConnection(uid) {
+  // This local preference provides display context only. It never authorizes an
+  // API operation, identifies a Wabba account, or qualifies a player for value.
+  connectedInMemory.add(uid);
+  try { localStorage.setItem(connectedPreferenceKey(uid), 'true'); } catch { /* Keep in memory. */ }
+  syncConnectedContext();
+}
 
 function configuredOrigin(value) {
   try {
@@ -19,7 +46,15 @@ function configuration() {
   if (wabbaConfig?.enabled !== true) return null;
   const webOrigin = configuredOrigin(wabbaConfig.webOrigin);
   const adapterOrigin = configuredOrigin(wabbaConfig.adapterOrigin);
-  return webOrigin && adapterOrigin ? { webOrigin, adapterOrigin } : null;
+  return webOrigin ? { webOrigin, adapterOrigin } : null;
+}
+
+function connectionConfiguration() {
+  const config = configuration();
+  if (!config?.adapterOrigin) {
+    throw new Error('Bingo account linking is not available yet. Your account has not been connected.');
+  }
+  return config;
 }
 
 function readStored(storage, key) {
@@ -37,10 +72,9 @@ class ConnectionRequestError extends Error {
 }
 
 async function call(auth, path, body, signal) {
-  const user = auth.currentUser;
+  const config = connectionConfiguration();
+  const user = auth?.currentUser;
   if (!user) throw new Error('Sign in to Bingo, then connect to Wabba.');
-  const config = configuration();
-  if (!config) throw new Error('The Bingo connection server is not configured yet.');
   const token = await user.getIdToken();
   const response = await fetch(`${config.adapterOrigin}${path}`, {
     method: 'POST', credentials: 'omit', redirect: 'error', signal,
@@ -55,7 +89,10 @@ async function call(auth, path, body, signal) {
 }
 
 async function startWabba(auth, signal) {
-  const user = auth.currentUser;
+  // Missing infrastructure must not collect a Firebase token or create a
+  // pending request. SDK visibility is independent from server readiness.
+  connectionConfiguration();
+  const user = auth?.currentUser;
   if (!user) throw new Error('Sign in to Bingo, then connect to Wabba.');
   // Only an ambiguous (e.g. lost network response) start is reused, and only
   // within its initiating tab. Successful starts must never reopen a consumed
@@ -87,12 +124,28 @@ async function startWabba(auth, signal) {
   return result;
 }
 
-export function setupWabba(auth) {
-  // Optional integration: unconfigured/disabled setup must not interrupt Bingo
-  // or display an action that cannot work. Repeated game initialization is safe.
+export function setupWabba(auth, { contextReady = false } = {}) {
+  // The local entry starts independently of Firebase. Bingo injects its auth
+  // instance when available, even if the widget was already mounted.
+  if (auth) gameAuth = auth;
+  // Identity readiness is presentation context, never a fabricated connection.
+  if (contextReady || auth?.currentUser) launcherContext.ready = true;
+  syncConnectedContext();
+  if (!storageListening) {
+    window.addEventListener('storage', event => {
+      const uid = gameAuth?.currentUser?.uid;
+      if (uid && (event.key === null || event.key === connectedPreferenceKey(uid))) syncConnectedContext();
+    });
+    storageListening = true;
+  }
+  // Display the installed SDK independently of the adapter's deployment.
+  // Explicit opt-out and invalid account origins still stay inert.
   if (entryMounted || !configuration()) return false;
   try {
-    mountWabbaEntry(() => loadLauncher(auth));
+    // Eligibility belongs to Wabba's account flow, not a second Bingo dialog.
+    // This non-secret link also works while the local SDK is loading/offline.
+    entryController = mountWabbaEntry(() => loadLauncher(), `${configuration().webOrigin}/account?game=bingo`);
+    entryController?.setContext(launcherContext);
     entryMounted = true;
     return true;
   } catch {
@@ -100,33 +153,57 @@ export function setupWabba(auth) {
   }
 }
 
-function loadLauncher(auth) {
+function loadLauncher() {
   return new Promise((resolve, reject) => {
     const config = configuration();
     if (!config) { reject(new Error('The Bingo connection server is not configured yet.')); return; }
     const script = document.createElement('script');
-    script.src = `${config.webOrigin}/sdk/wabba-connect.v1.js`;
+    // Self-host the unchanged shared SDK with Bingo, including path-based hosts.
+    // Showing the launcher must not depend on access to Wabba's private website.
+    script.src = new URL('./wabba-sdk/sdk/wabba-connect.v1.js?v=widget-20260915-3', import.meta.url).href;
     script.dataset.game = 'bingo';
+    script.dataset.wabbaOrigin = config.webOrigin;
     script.dataset.autoMount = 'false';
     let settled = false;
     let timer;
+    let host;
+    let stylesheet;
     const settle = error => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
       script.onload = null;
       script.onerror = null;
-      if (error) { script.remove(); reject(error); }
-      else resolve();
+      if (stylesheet) { stylesheet.onload = null; stylesheet.onerror = null; }
+      if (error) { if (host) window.WabbaConnect?.destroy?.(); host?.remove(); script.remove(); reject(error); }
+      else { host.style.removeProperty('display'); resolve(window.WabbaConnect); }
     };
     script.onerror = () => settle(new Error('Wabba could not load. Please try again.'));
     script.onload = () => {
       // An old request may finish after timeout/removal and a new attempt.
       if (settled) return;
       try {
-        if (!window.WabbaConnect) throw new Error('Wabba could not initialize.');
-        window.WabbaConnect.mount({ connect: ({ signal }) => startWabba(auth, signal) });
-        settle();
+        if (!window.WabbaConnect || !['mount', 'setContext', 'destroy'].every(
+          name => typeof window.WabbaConnect[name] === 'function')) throw new Error('Wabba could not initialize.');
+        // Seed presentation context without hiding the persistent launcher.
+        window.WabbaConnect.setContext(launcherContext);
+        // Missing infrastructure must not trap the player at a setup error.
+        // Ordinary navigation opens Wabba, but is never proof of an account link.
+        window.WabbaConnect.mount({
+          ...(config.adapterOrigin ? { connect: ({ signal }) => startWabba(gameAuth, signal) } : {}),
+          dismissible: false,
+        });
+        host = document.getElementById('wabba-connect-launcher');
+        if (!host) throw new Error('Wabba launcher did not mount.');
+        // A mounted host alone is not ready: its shadow stylesheet loads
+        // separately. Keep the styled native card until that CSS is available,
+        // so slow/failed CSS cannot turn the launcher into plain page text.
+        host.style.setProperty('display', 'none', 'important');
+        stylesheet = host.shadowRoot?.querySelector('link[rel="stylesheet"]');
+        if (!stylesheet) throw new Error('Wabba launcher styles are missing.');
+        stylesheet.onload = () => settle();
+        stylesheet.onerror = () => settle(new Error('Wabba styles could not load. Please try again.'));
+        if (stylesheet.sheet) settle();
       } catch {
         settle(new Error('Wabba could not initialize. Please try again.'));
       }
@@ -138,7 +215,8 @@ function loadLauncher(auth) {
 }
 
 export async function finishWabba(auth, callback) {
-  const user = auth.currentUser;
+  connectionConfiguration();
+  const user = auth?.currentUser;
   if (!user) throw new Error('Sign in to Bingo in the original tab, then try again here.');
   if (typeof callback?.state !== 'string' || !statePattern.test(callback.state)) throw new Error('This callback is invalid. Start a new Wabba connection from Bingo.');
   const key = callbackKeyFor(user.uid, callback.state);
@@ -149,6 +227,7 @@ export async function finishWabba(auth, callback) {
   }
   const result = await call(auth, '/wabba/link/finish', { ...callback, request_key: pending.requestKey }, AbortSignal.timeout(15000));
   if (result.connected !== true) throw new Error('Connection was not confirmed. Try again.');
+  rememberConfirmedConnection(user.uid);
   localStorage.removeItem(key);
   return result;
 }
