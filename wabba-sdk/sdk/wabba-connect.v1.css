@@ -11,6 +11,8 @@ strong { font-size: 14px; font-weight: 700; }
 small { color: #c5c0d5; font-size: 12px; margin-top: 2px; }
 .wabba-arrow { margin-left: auto; flex: 0 0 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: #7135db; font-size: 21px; }
 .wabba-status { margin: 0; padding: 0 12px 12px; color: #ded6f4; font-size: 12px; overflow-wrap: anywhere; }
+.wabba-result { margin: 0; padding: 0 12px 12px; color: #ded6f4; font-size: 12px; overflow-wrap: anywhere; }
+.wabba-result-retry { margin: 0 12px 12px; min-height: 32px; padding: 6px 10px; border: 1px solid #8e6be0; border-radius: 8px; background: #28203c; color: #fff; font: inherit; cursor: pointer; }
 [hidden] { display: none; }
 a[aria-busy="true"] { cursor: progress; }
 .wabba-close { position: absolute; right: -8px; top: -32px; width: 44px; height: 44px; border: 0; background: transparent; cursor: pointer; font: 22px system-ui, sans-serif; color: #eee9ff; text-shadow: 0 1px 4px #000; }

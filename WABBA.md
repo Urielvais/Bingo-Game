@@ -25,9 +25,9 @@ so stale deployment settings cannot silently hide connection controls.
 | --- | --- |
 | `wabba-config.js` | Widget visibility and deployment origins |
 | `wabba-entry-view.js`, `wabba-entry.css` | Local anchor and progressive SDK enhancement |
-| `wabba.js` | Bingo Firebase identity, request bindings, SDK loading, callback completion |
+| `wabba.js` | Bingo Firebase identity, request bindings, SDK loading, callback completion and game-result events |
 | `wabba-callback.*` | Standalone return page and recoverable confirmation status |
-| `wabba-sdk/` (installed shared browser SDK) | Persistent branded launcher and approval navigation |
+| `wabba-sdk/` (installed shared browser SDK) | Persistent branded launcher, approval navigation and reusable authenticated result client |
 | Bingo server adapter (separate Wabba deployment) | Verify Firebase tokens; own PKCE, partner signing, and durable link state |
 | Wabba API (separate deployment) | Account consent, eligibility, ledger, and rewards |
 
@@ -82,7 +82,7 @@ account link usable. Late completion of an abandoned load cannot mount the UI.
 
 ## Browser/server contract
 
-Both adapter endpoints accept JSON over HTTPS with
+All adapter endpoints use HTTPS with
 `Authorization: Bearer <Bingo Firebase ID token>`. Tokens are obtained from the
 current Firebase user and are not persisted by these integration files. API
 requests omit cookies and reject redirects.
@@ -94,6 +94,10 @@ requests omit cookies and reject redirects.
 - `POST /wabba/link/finish`: JSON fields `state`, `code`, `link_session_id`, and
   the initiating `request_key`.
   Success must explicitly return `{ "connected": true }`.
+- `GET /wabba/matches/<match-id>/result`: no body or query parameters. The only
+  caller input is the match ID; the server must derive the game user from the
+  Firebase token and verify its current Wabba account link before returning data.
+  A local connection preference is not authorization.
 
 Ambiguous start retries reuse a per-tab request ID for up to 15 minutes. A
 successful start clears that retry slot, so a later click starts a fresh flow.
@@ -152,6 +156,74 @@ and live-provider checks have not been performed. No live rewards or gift-card
 delivery has been tested or enabled.
 
 ## Recorded results and rewards
+
+The game-side SDK is wired to winner, archived-game deletion, and ended-game
+rejoin events. It requests the saved result from the configured adapter using
+the current Firebase user's token. It does **not** send the browser's winner,
+email, UID, score, or a `won: true` assertion. Checks begin after a confirmed
+connection; the server must recheck that binding on every request.
+
+The shipped `adapterOrigin` remains `null` because no live result server has
+been configured. The widget is enabled, but real account linking and result
+reads need that deployment. This PR does not connect the Wabba website/API or
+enable payouts; those are the next integration stage.
+
+The result contract is richer than a boolean:
+
+| Field | Meaning and source |
+| --- | --- |
+| `gameId` | The server-configured Wabba game registration |
+| `externalMatchId` | Bingo's match/document ID |
+| `gameUserId` | Firebase UID verified by the adapter, never a display name |
+| `wabbaPlayerId`, `connected` | The current server-verified Wabba account link |
+| `email`, `emailVerified` | Optional game sign-in email and verification claim; not the Wabba email and not a matching key |
+| `status`, `evidence` | `recorded` / `game_record`, or `not_final` while saving |
+| `outcome`, `won` | `win`, `loss`, or `draw`, and whether this participant won |
+| `participantIds`, `winnerId`, `completedAt` | Saved match evidence; a draw has a null winner |
+
+The reusable SDK supports draws; Bingo's existing archive reader currently
+requires a winner and does not invent a draw for an incomplete/legacy archive.
+Emails may be absent, especially for anonymous or phone-only game accounts.
+Account matching always uses `(gameId, verified gameUserId)` and the approved
+server-held link to `wabbaPlayerId`, never equal emails or user-entered IDs.
+
+The card displays checking, pending, recorded win/loss/draw, sign-in/connection,
+and unavailable states. A recorded win explicitly says it is not yet a gift-card
+award. Pending results retry up to five times; pending/unavailable states offer
+"Check result again". Each token/HTTP attempt has a deadline, account changes
+cancel stale reads, and a new game clears the previous result. There is still
+no X/close button. Result status is an atomic polite live region and does not
+move keyboard focus or print email/account IDs.
+
+### Reuse in the next game
+
+Install the same four SDK assets (launcher JS, CSS, result module and logo),
+then supply that game's identity adapter and call `watch()` when a match ends:
+
+```js
+import { WabbaResultClient } from './wabba-sdk/sdk/wabba-results.v1.mjs';
+
+const results = new WabbaResultClient({
+  apiOrigin: 'https://your-deployed-game-adapter.example',
+  getIdentity: () => {
+    const user = gameAuth.currentUser;
+    return user ? { id: user.uid, getToken: () => user.getIdToken() } : null;
+  },
+  onState: state => window.WabbaConnect.setResultState(state),
+});
+// Pass onResultRetry: () => results.retry() when mounting WabbaConnect.
+// After account connection and the game's match-ended event:
+const state = await results.watch(matchId);
+if (state.result) console.log(state.result.outcome); // Not a reward instruction.
+// On the next match or auth change: results.reset().
+```
+
+The shared result client has no Firebase dependency. Other games replace
+`getIdentity` and their server's source-record reader, not the widget or result
+validation. `tests/wabba-results.test.mjs` exercises the installed module inside
+this repository; no checkout of Wabba is required for CI.
+
+### Evidence limits
 
 Bingo currently lets browsers calculate results and write winners. Its phrase
 and social modes also rely on observations/votes, and it supports more than two

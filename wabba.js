@@ -1,5 +1,6 @@
-import { wabbaConfig } from './wabba-config.js?v=widget-20260915-3';
-import { mountWabbaEntry } from './wabba-entry-view.js?v=widget-20260915-3';
+import { wabbaConfig } from './wabba-config.js?v=widget-20260915-4';
+import { mountWabbaEntry } from './wabba-entry-view.js?v=widget-20260915-4';
+import { WabbaResultClient } from './wabba-sdk/sdk/wabba-results.v1.mjs?v=widget-20260915-4';
 
 const startKeyFor = uid => `wabba:bingo:start:${uid}`;
 const callbackKeyFor = (uid, state) => `wabba:bingo:callback:${uid}:${state}`;
@@ -12,13 +13,48 @@ let storageListening = false;
 const connectedPreferenceKey = uid => `wabba:bingo:connected:${uid}`;
 const connectedInMemory = new Set();
 const launcherContext = { playing: false, connected: false, ready: false };
+let resultClient;
+let endedMatchId = null;
+let resultIdentity = null;
+
+function results() {
+  if (!resultClient) resultClient = new WabbaResultClient({
+    apiOrigin: configuration()?.adapterOrigin,
+    getIdentity: () => {
+      const user = gameAuth?.currentUser;
+      return user ? { id: user.uid, getToken: () => user.getIdToken() } : null;
+    },
+    onState: state => entryController?.setResultState?.(state),
+  });
+  return resultClient;
+}
+
+export function prepareWabbaMatch() {
+  endedMatchId = null;
+  if (resultClient) resultClient.reset();
+  else entryController?.setResultState?.({ status: 'idle', message: '' });
+}
+
+export function checkWabbaResult(matchId) {
+  if (typeof matchId !== 'string' || !/^[A-Za-z0-9_-]{1,200}$/.test(matchId) || /\s/.test(matchId)) return Promise.resolve(null);
+  endedMatchId = matchId;
+  // A remembered link only gates automatic collection; the server rechecks the
+  // actual Wabba binding on every result request, including revocation.
+  if (!launcherContext.connected) {
+    entryController?.setResultState?.({ status: 'not_connected', message: 'Connect your game account to Wabba to check this match.' });
+    return Promise.resolve(null);
+  }
+  return results().watch(matchId).catch(() => null);
+}
 
 function syncConnectedContext() {
   const uid = gameAuth?.currentUser?.uid;
+  if (uid !== resultIdentity) { resultClient?.reset(); resultIdentity = uid; }
   let remembered = false;
   try { remembered = !!uid && localStorage.getItem(connectedPreferenceKey(uid)) === 'true'; } catch { /* UI preference only. */ }
   launcherContext.connected = !!uid && (connectedInMemory.has(uid) || remembered);
   entryController?.setContext(launcherContext);
+  if (endedMatchId && launcherContext.connected) void checkWabbaResult(endedMatchId);
 }
 
 export function updateWabbaContext({ playing } = {}) {
@@ -144,7 +180,9 @@ export function setupWabba(auth, { contextReady = false } = {}) {
   try {
     // Eligibility belongs to Wabba's account flow, not a second Bingo dialog.
     // This non-secret link also works while the local SDK is loading/offline.
-    entryController = mountWabbaEntry(() => loadLauncher(), `${configuration().webOrigin}/account?game=bingo`);
+    entryController = mountWabbaEntry(() => loadLauncher(), `${configuration().webOrigin}/account?game=bingo`, {
+      onResultRetry: () => resultClient ? resultClient.retry() : endedMatchId && checkWabbaResult(endedMatchId),
+    });
     entryController?.setContext(launcherContext);
     entryMounted = true;
     return true;
@@ -160,7 +198,7 @@ function loadLauncher() {
     const script = document.createElement('script');
     // Self-host the unchanged shared SDK with Bingo, including path-based hosts.
     // Showing the launcher must not depend on access to Wabba's private website.
-    script.src = new URL('./wabba-sdk/sdk/wabba-connect.v1.js?v=widget-20260915-3', import.meta.url).href;
+    script.src = new URL('./wabba-sdk/sdk/wabba-connect.v1.js?v=widget-20260915-4', import.meta.url).href;
     script.dataset.game = 'bingo';
     script.dataset.wabbaOrigin = config.webOrigin;
     script.dataset.autoMount = 'false';
@@ -192,6 +230,7 @@ function loadLauncher() {
         window.WabbaConnect.mount({
           ...(config.adapterOrigin ? { connect: ({ signal }) => startWabba(gameAuth, signal) } : {}),
           dismissible: false,
+          onResultRetry: () => resultClient ? resultClient.retry() : endedMatchId && checkWabbaResult(endedMatchId),
         });
         host = document.getElementById('wabba-connect-launcher');
         if (!host) throw new Error('Wabba launcher did not mount.');

@@ -8,3 +8,7 @@
 .wabba-local-entry:focus-visible { outline: 3px solid #b8e63a; outline-offset: 4px; }
 .wabba-entry-shell { position: fixed; right: calc(16px + env(safe-area-inset-right)); bottom: calc(16px + env(safe-area-inset-bottom)); width: min(280px, calc(100vw - 32px - env(safe-area-inset-left) - env(safe-area-inset-right))); z-index: 1000; }
 .wabba-entry-shell .wabba-local-entry { position: relative; inset: auto; width: 100%; }
+.wabba-entry-result { margin: 6px 0 0; padding: 10px 12px; border: 1px solid #8e6be0; border-radius: 10px; background: #171726; color: #ded6f4; font: 12px/1.45 system-ui; overflow-wrap: anywhere; }
+.wabba-entry-retry { margin-top: 6px; min-height: 32px; padding: 6px 10px; border: 1px solid #8e6be0; border-radius: 8px; background: #28203c; color: #fff; font: 12px/1.45 system-ui; cursor: pointer; }
+.wabba-entry-retry:focus-visible { outline: 3px solid #b8e63a; outline-offset: 3px; }
+.wabba-entry-shell [hidden] { display: none !important; }

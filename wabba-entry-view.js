@@ -1,10 +1,10 @@
 /** Local, immediately usable account link; the shared SDK progressively enhances it. */
-export function mountWabbaEntry(loadLauncher, accountURL) {
+export function mountWabbaEntry(loadLauncher, accountURL, { onResultRetry } = {}) {
   // accountURL is built from the validated deployment origin by wabba.js.
   if (!document.getElementById('wabba-entry-styles')) {
     const css = document.createElement('link');
     css.id = 'wabba-entry-styles'; css.rel = 'stylesheet';
-    css.href = new URL('./wabba-entry.css?v=widget-20260915-3', import.meta.url).href;
+    css.href = new URL('./wabba-entry.css?v=widget-20260915-4', import.meta.url).href;
     document.head.append(css);
   }
   let shell = document.getElementById('wabba-entry-shell');
@@ -37,8 +37,23 @@ export function mountWabbaEntry(loadLauncher, accountURL) {
   entry.dataset.wabbaReady = 'true';
   let launcher;
   let destroyed = false;
+  let resultState = { status: 'idle', message: '' };
+  const resultMessage = document.createElement('p');
+  resultMessage.className = 'wabba-entry-result'; resultMessage.hidden = true;
+  resultMessage.setAttribute('role', 'status'); resultMessage.setAttribute('aria-live', 'polite'); resultMessage.setAttribute('aria-atomic', 'true');
+  const retry = document.createElement('button'); retry.type = 'button'; retry.className = 'wabba-entry-retry';
+  retry.textContent = 'Check result again'; retry.hidden = true;
+  retry.addEventListener('click', () => { void onResultRetry?.(); });
+  shell.append(resultMessage, retry);
   const context = { playing: false, connected: false, ready: true };
   const controller = {
+    setResultState(update) {
+      resultState = update;
+      if (launcher) { launcher.setResultState?.(update); return; }
+      resultMessage.hidden = !update.message;
+      if (resultMessage.textContent !== update.message) resultMessage.textContent = update.message;
+      retry.hidden = !onResultRetry || !['pending', 'unavailable'].includes(update.status);
+    },
     setContext(update = {}) {
       for (const key of ['playing', 'connected', 'ready']) if (typeof update[key] === 'boolean') context[key] = update[key];
       if (launcher) launcher.setContext(context);
@@ -62,6 +77,7 @@ export function mountWabbaEntry(loadLauncher, accountURL) {
       if (destroyed) { ready.destroy(); return; }
       // Preserve game context while handing off to the persistent shared card.
       ready.setContext(context);
+      ready.setResultState?.(resultState);
       launcher = ready;
       (shell || entry).remove();
     } catch {

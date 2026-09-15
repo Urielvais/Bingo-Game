@@ -4,6 +4,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { runInNewContext } from 'node:vm';
 import { Script } from 'node:vm';
+import { WabbaResultClient } from '../wabba-sdk/sdk/wabba-results.v1.mjs';
 
 // Exercise actual Bingo sources with separate per-tab sessionStorage and shared
 // origin localStorage. These protocol tests need only Node, not the Wabba repo,
@@ -40,6 +41,21 @@ function setup(configOverrides = {}, { failMount = false, failSdk = false, stall
   let rejectStart = false;
   let confirmFinish = true;
   const transport = async (url, options) => {
+    if (options.method === 'GET') {
+      const uid = options.headers.Authorization.slice('Bearer token-'.length);
+      requests.push({ url, uid, body: options.body });
+      assert.equal(options.body, undefined);
+      assert.equal(options.credentials, 'omit');
+      assert.equal(options.redirect, 'error');
+      assert.equal(options.cache, 'no-store');
+      assert.equal(url, 'https://adapter.test/wabba/matches/match-42/result');
+      return { ok: true, status: 200, json: async () => ({
+        gameId: 'gam_bingo', externalMatchId: 'match-42', gameUserId: uid, wabbaPlayerId: `plr_${uid}`,
+        connected: true, email: `${uid}@example.test`, emailVerified: true,
+        status: 'recorded', evidence: 'game_record', outcome: uid === 'alice' ? 'win' : 'loss',
+        won: uid === 'alice', winnerId: 'alice', participantIds: ['alice', 'bob'], completedAt: '2026-09-14T12:00:00Z',
+      }) };
+    }
     assert.equal(options.method, 'POST');
     assert.equal(options.credentials, 'omit', 'game cookies must never accompany adapter calls');
     assert.equal(options.redirect, 'error', 'a redirect must not forward Firebase authentication');
@@ -81,6 +97,7 @@ function setup(configOverrides = {}, { failMount = false, failSdk = false, stall
     let dismissible;
     const sdkContexts = [];
     const entryContexts = [];
+    const resultStates = [];
     const sdkEvents = [];
     let destroys = 0;
     let timerId = 0;
@@ -102,11 +119,14 @@ function setup(configOverrides = {}, { failMount = false, failSdk = false, stall
       } },
     };
     const context = {
+      WabbaResultClient: class extends WabbaResultClient {
+        constructor(options) { super({ ...options, fetch: transport }); }
+      },
       wabbaConfig: configOverrides === null ? null : { enabled: true, webOrigin: 'https://wabba.test', adapterOrigin: 'https://adapter.test', ...configOverrides },
       mountWabbaEntry: (callback, destination) => {
         if (failMount) { failMount = false; throw new Error('Optional UI unavailable'); }
         enhance = callback; accountURL = destination; mounts += 1;
-        return { setContext: value => entryContexts.push({ ...value }) };
+        return { setContext: value => entryContexts.push({ ...value }), setResultState: value => resultStates.push(value) };
       },
       localStorage: local, sessionStorage: session,
       crypto: { randomUUID }, Date: { now: () => now },
@@ -130,10 +150,12 @@ function setup(configOverrides = {}, { failMount = false, failSdk = false, stall
         head: { append: script => { assets.push(script.src); scripts.push(script); if (!stallSdk) script.onload(); } },
       },
     };
-    runInNewContext(`${source}\nglobalThis.testAPI = { setupWabba, finishWabba, updateWabbaContext };`, context);
+    runInNewContext(`${source}\nglobalThis.testAPI = { setupWabba, finishWabba, updateWabbaContext, checkWabbaResult, prepareWabbaMatch };`, context);
     context.testAPI.setupWabba(authDelayed ? undefined : auth);
     return {
-      session, auth, assets, scripts, timers, stylesheet, styles, host, sdkContexts, entryContexts, sdkEvents,
+      session, auth, assets, scripts, timers, stylesheet, styles, host, sdkContexts, entryContexts, sdkEvents, resultStates,
+      checkResult: id => context.testAPI.checkWabbaResult(id),
+      prepareResult: () => context.testAPI.prepareWabbaMatch(),
       destroyCount: () => destroys,
       updateContext: value => context.testAPI.updateWabbaContext(value),
       mountCount: () => mounts,
@@ -162,6 +184,44 @@ function setup(configOverrides = {}, { failMount = false, failSdk = false, stall
     expire: () => { now += 16 * 60 * 1000; },
   };
 }
+
+test('result checks wait for connection, read with the signed-in token and clear for the next match', async () => {
+  const f = setup();
+  const game = f.tab();
+  await game.checkResult('match-42');
+  assert.equal(f.requests.length, 0);
+  assert.equal(f.tokenRequests.length, 0);
+  assert.equal(game.resultStates.at(-1).status, 'not_connected');
+  game.prepareResult();
+  assert.equal(game.resultStates.at(-1).status, 'idle', 'a new game also clears the pre-connection message');
+  await game.checkResult('match-42');
+  const started = await game.start();
+  await game.finish(f.callback(started.state));
+  const result = await game.checkResult('match-42');
+  assert.equal(result.status, 'win');
+  assert.equal(result.result.gameUserId, 'alice');
+  assert.equal(result.result.wabbaPlayerId, 'plr_alice');
+  assert.equal(result.result.email, 'alice@example.test');
+  assert.equal(f.requests.filter(request => request.body === undefined).length, 1, 'automatic and repeated checks share one request');
+  game.prepareResult();
+  assert.equal(game.resultStates.at(-1).status, 'idle');
+  assert.equal(game.resultStates.at(-1).result, undefined);
+  game.auth.currentUser = null;
+  game.setupAgain();
+  await game.checkResult('match-42');
+  assert.equal(f.requests.filter(request => request.body === undefined).length, 1, 'signed-out accounts never send result requests');
+});
+
+test('missing result backend does not invent wins or block the connection card', async () => {
+  const f = setup({ adapterOrigin: null });
+  f.local.setItem('wabba:bingo:connected:alice', 'true');
+  const game = f.tab();
+  await game.checkResult('match-42');
+  assert.equal(f.requests.length, 0);
+  assert.equal(game.mountCount(), 1);
+  assert.notEqual(game.resultStates.at(-1).status, 'win');
+  assert.equal(game.resultStates.at(-1).status, 'unavailable');
+});
 
 test('simultaneous tabs bind callbacks independently and clear only their own completed flow', async () => {
   const f = setup();
@@ -284,8 +344,8 @@ test('the widget mounts before Firebase is ready and accepts authentication late
 test('Bingo boots the local widget separately from its Firebase module graph', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   const entry = readFileSync(new URL('../wabba-entry.js', import.meta.url), 'utf8');
-  assert.match(html, /<script type="module" src="wabba-entry\.js\?v=widget-20260915-3" async><\/script>/);
-  assert.match(entry, /import \{ setupWabba \} from '\.\/wabba\.js\?v=widget-20260915-3'/);
+  assert.match(html, /<script type="module" src="wabba-entry\.js\?v=widget-20260915-4" async><\/script>/);
+  assert.match(entry, /import \{ setupWabba \} from '\.\/wabba\.js\?v=widget-20260915-4'/);
   assert.match(entry, /setupWabba\(\)/);
   assert.doesNotMatch(entry, /firebase\.js|gstatic|fetch\(/);
   assert.doesNotMatch(html, /wabba-connect-header/);
@@ -294,7 +354,7 @@ test('Bingo boots the local widget separately from its Firebase module graph', (
 test('the complete styled card exists in initial HTML even with every script removed', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
-  assert.match(html, /<link id="wabba-entry-styles" rel="stylesheet" href="\.\/wabba-entry\.css\?v=widget-20260915-3">/);
+  assert.match(html, /<link id="wabba-entry-styles" rel="stylesheet" href="\.\/wabba-entry\.css\?v=widget-20260915-4">/);
   const card = html.match(/<aside id="wabba-entry-shell"[\s\S]*?<\/aside>/)?.[0];
   assert.ok(card);
   assert.match(card, /<a id="wabba-local-entry" class="wabba-local-entry"/);
@@ -319,11 +379,11 @@ test('the complete styled card exists in initial HTML even with every script rem
 test('all Wabba bootstrap imports use one fresh release URL, including auth injection', () => {
   for (const name of ['wabba-entry.js', 'script.js', 'wabba-callback.js', 'ui.js']) {
     const code = readFileSync(new URL(`../${name}`, import.meta.url), 'utf8');
-    assert.match(code, /from '\.\/wabba\.js\?v=widget-20260915-3'/);
+    assert.match(code, /from '\.\/wabba\.js\?v=widget-20260915-4'/);
   }
   const code = readFileSync(new URL('../wabba.js', import.meta.url), 'utf8');
-  assert.match(code, /from '\.\/wabba-config\.js\?v=widget-20260915-3'/);
-  assert.match(code, /from '\.\/wabba-entry-view\.js\?v=widget-20260915-3'/);
+  assert.match(code, /from '\.\/wabba-config\.js\?v=widget-20260915-4'/);
+  assert.match(code, /from '\.\/wabba-entry-view\.js\?v=widget-20260915-4'/);
   assert.doesNotMatch(code, /wabba-age-gate/);
 });
 
@@ -476,7 +536,7 @@ test('SDK mounts once with local assets and never requests a token before connec
   assert.equal(game.assets.length, 0);
   assert.equal(f.requests.length, 0);
   await game.loadSdk();
-  assert.deepEqual(game.assets, ['https://bingo.example/Bingo-Game/wabba-sdk/sdk/wabba-connect.v1.js?v=widget-20260915-3']);
+  assert.deepEqual(game.assets, ['https://bingo.example/Bingo-Game/wabba-sdk/sdk/wabba-connect.v1.js?v=widget-20260915-4']);
   assert.equal(game.scripts[0].dataset.wabbaOrigin, 'https://wabba.test');
   assert.equal(game.destination(), 'https://wabba.test/account?game=bingo');
   assert.equal(game.isDismissible(), false, 'Bingo keeps the shared card visible without an X');

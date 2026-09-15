@@ -1,5 +1,5 @@
 import { state } from './script.js';
-import { updateWabbaContext } from './wabba.js?v=widget-20260915-3';
+import { updateWabbaContext } from './wabba.js?v=widget-20260915-4';
 import { db, storage } from './firebase.js';
 import { doc, getDoc, updateDoc, arrayRemove, deleteDoc, collection, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 import { ref, listAll, deleteObject } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-storage.js";

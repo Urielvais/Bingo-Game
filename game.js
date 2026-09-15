@@ -4,6 +4,7 @@ import { db, storage } from './firebase.js';
 import { ui, showMessage, showView, renderBingoCard, renderPlayerProgress, renderRarePhrases, renderActiveGamesList, renderWinnerModal, renderCallerUI } from './ui.js';
 import { state } from './script.js';
 import { createWinnerRecord, archiveRecordedGame, retryGameArchive } from './recorded-result.mjs';
+import { checkWabbaResult, prepareWabbaMatch } from './wabba.js?v=widget-20260915-4';
 
 export function getPhrasesFromInput() {
     if (!ui.phrasesInput) return [];
@@ -156,6 +157,7 @@ export async function joinGame(pName, pId) {
             // Recover a previously interrupted archive when this ended active
             // game is revisited. Existing archives never replay statistics.
             const archived = endedActiveGameId ? await cleanupEndedGame(endedActiveGameId) : true;
+            void checkWabbaResult(state.gameId);
             showMessage("Game Over", `This game has already been won by ${gameData.winner}.`);
             
             // Clean up the active game from the user's list
@@ -615,11 +617,13 @@ export function listenForRecentGames() {
 }
 
 export function listenForGameUpdates(id) {
+    prepareWabbaMatch();
     state.unsubscribe.game = onSnapshot(doc(db, "activeGames", id), (gameSnapshot) => {
-        if (!gameSnapshot.exists()) return;
+        if (!gameSnapshot.exists()) { void checkWabbaResult(id); return; }
         const gameData = gameSnapshot.data();
         state.currentGameData = gameData;
         if (gameData.winner) {
+            void checkWabbaResult(id);
             if (ui.winnerModal.classList.contains('hidden')) {
                 renderWinnerModal(gameData.winner);
             }

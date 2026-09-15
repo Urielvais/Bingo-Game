@@ -25,5 +25,8 @@ jobs:
           for source in *.js; do
             node --input-type=module --check < "$source" || exit 1
           done
-      - name: Check account-link protocol and UI controllers
+          for source in *.mjs wabba-sdk/sdk/*.js wabba-sdk/sdk/*.mjs; do
+            node --check "$source" || exit 1
+          done
+      - name: Check account-link protocol, result SDK and UI controllers
         run: node --test tests/*.test.mjs

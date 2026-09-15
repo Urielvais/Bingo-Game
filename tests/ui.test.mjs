@@ -28,7 +28,7 @@ class Element {
   }
 }
 
-function accountEntry(loadLauncher, { staticMarkup = false } = {}) {
+function accountEntry(loadLauncher, { staticMarkup = false, onResultRetry } = {}) {
   const initialEntry = staticMarkup ? new Element('a') : null;
   const initialShell = staticMarkup ? new Element('aside') : null;
   const stylesheet = staticMarkup ? new Element('link') : null;
@@ -56,7 +56,7 @@ function accountEntry(loadLauncher, { staticMarkup = false } = {}) {
     clearTimeout: () => assert.fail('The persistent fallback needs no reminder timers.'),
   });
   vm.runInContext(`${source}\nglobalThis.mount = mountWabbaEntry;`, context);
-  const controller = context.mount(loadLauncher, accountURL);
+  const controller = context.mount(loadLauncher, accountURL, { onResultRetry });
   const entry = document.getElementById('wabba-local-entry');
   const shell = document.getElementById('wabba-entry-shell');
   return { document, entry, shell, created, accountURL, controller,
@@ -75,7 +75,7 @@ test('the native account link is usable immediately without an age dialog or cli
   let calls = 0;
   const ui = accountEntry(() => { calls++; return new Promise(() => {}); });
   assert.equal(calls, 1, 'the local SDK starts loading without an age selection or click');
-  assert.equal(ui.document.head.children[0].href, 'https://bingo.example/Bingo-Game/wabba-entry.css?v=widget-20260915-3');
+  assert.equal(ui.document.head.children[0].href, 'https://bingo.example/Bingo-Game/wabba-entry.css?v=widget-20260915-4');
   assert.equal(ui.entry.children[0].src, 'https://bingo.example/Bingo-Game/wabba-logo.png');
   assert.equal(ui.shell.tag, 'aside');
   assert.equal(ui.entry.tag, 'a');
@@ -89,7 +89,9 @@ test('the native account link is usable immediately without an age dialog or cli
   assert.equal(ui.entry.children[1].children[1].textContent, 'Win games. Get gift cards.');
   assert.equal(ui.entry.children[1].children.length, 2);
   assert.equal(ui.entry.children[2].attributes.get('aria-hidden'), 'true');
-  assert.equal(ui.created.some(element => ['dialog', 'select', 'button'].includes(element.tag)), false);
+  assert.equal(ui.created.some(element => ['dialog', 'select'].includes(element.tag)), false);
+  assert.equal(ui.created.filter(element => element.tag === 'button').length, 1);
+  assert.equal(ui.created.find(element => element.tag === 'button').hidden, true);
   assert.equal(ui.close, undefined);
   assert.equal(ui.controller.dismiss, undefined);
   assert.equal(ui.entry.children[0].width, 40);
@@ -113,7 +115,7 @@ test('adopts the initial native anchor and stylesheet once while loading in the 
   assert.equal(ui.entry.listeners.size, 0);
   ui.mountAgain();
   assert.equal(ui.document.body.children.length, 1);
-  assert.equal(ui.created.length, 0, 'adoption adds no duplicate elements or age controls');
+  assert.equal(ui.created.length, 2, 'adoption adds only hidden result and retry controls, once');
   assert.equal(attempts, 1);
   assert.equal(ui.shell.removed, false);
 });
@@ -184,6 +186,31 @@ test('the fallback stays visible through game, connection and readiness changes 
   }
   const source = readFileSync(new URL('../wabba-entry-view.js', import.meta.url), 'utf8');
   assert.doesNotMatch(source, /dismiss|setTimeout|clearTimeout|Date\.now/);
+});
+
+test('result status is accessible, retryable and survives the SDK handoff without a close button', async () => {
+  let complete;
+  let retries = 0;
+  const states = [];
+  const sdk = { ...sdkDouble(), setResultState: value => states.push({ ...value }) };
+  const ui = accountEntry(() => new Promise(resolve => { complete = resolve; }), { onResultRetry: () => { retries++; } });
+  const message = ui.created.find(node => node.className === 'wabba-entry-result');
+  const retry = ui.created.find(node => node.className === 'wabba-entry-retry');
+  assert.equal(message.attributes.get('role'), 'status');
+  assert.equal(message.attributes.get('aria-live'), 'polite');
+  assert.equal(message.attributes.get('aria-atomic'), 'true');
+  ui.controller.setResultState({ status: 'pending', message: 'Saving the match.' });
+  assert.equal(message.hidden, false);
+  assert.equal(message.textContent, 'Saving the match.');
+  assert.equal(retry.hidden, false);
+  await retry.click();
+  assert.equal(retries, 1);
+  complete(sdk);
+  await flush();
+  assert.deepEqual(states, [{ status: 'pending', message: 'Saving the match.' }]);
+  ui.controller.setResultState({ status: 'win', message: 'Win recorded.' });
+  assert.equal(states.at(-1).status, 'win');
+  assert.equal(ui.close, undefined);
 });
 
 test('SDK handoff preserves context and never requires a dismissal API', async () => {

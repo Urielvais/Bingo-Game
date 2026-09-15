@@ -35,6 +35,23 @@
   let active = false;
   let domReadyQueued = false;
   let pendingOptions;
+  let resultState = { status: "idle", message: "" };
+  const renderResult = () => {
+    const root = document.getElementById("wabba-connect-launcher")?.shadowRoot;
+    const message = root?.querySelector(".wabba-result");
+    if (!message) return;
+    message.hidden = !resultState.message;
+    if (message.textContent !== resultState.message) message.textContent = resultState.message;
+    const retry = root.querySelector(".wabba-result-retry");
+    if (retry) retry.hidden = !["pending", "unavailable"].includes(resultState.status);
+  };
+  const setResultState = update => {
+    if (!update || !["idle", "checking", "pending", "win", "loss", "draw", "not_connected", "sign_in", "unavailable"].includes(update.status) ||
+        typeof update.message !== "string" || update.message.length > 320) throw new TypeError("Provide a result presentation state.");
+    // Presentation only. API authorization never reads this state.
+    resultState = { status: update.status, message: update.message };
+    renderResult();
+  };
   const context = { playing: false, connected: false, ready: true };
   const saveSnooze = () => {
     try {
@@ -81,12 +98,13 @@
     // Do not hide an already-visible card; context only postpones reminders.
     scheduleReminder();
   };
-  const mount = ({ connect, dismissible = false } = {}) => {
+  const mount = ({ connect, dismissible = false, onResultRetry } = {}) => {
     if (connect !== undefined && typeof connect !== "function") throw new TypeError("connect must be a function.");
     if (typeof dismissible !== "boolean") throw new TypeError("dismissible must be a boolean.");
+    if (onResultRetry !== undefined && typeof onResultRetry !== "function") throw new TypeError("onResultRetry must be a function.");
     active = true;
     if (!document.body) {
-      pendingOptions = { connect, dismissible };
+      pendingOptions = { connect, dismissible, onResultRetry };
       if (!domReadyQueued) {
         domReadyQueued = true;
         document.addEventListener("DOMContentLoaded", () => {
@@ -211,14 +229,30 @@
       card.append(close);
     }
     card.append(status);
+    const resultMessage = document.createElement("p");
+    resultMessage.className = "wabba-result";
+    resultMessage.setAttribute("role", "status");
+    resultMessage.setAttribute("aria-live", "polite");
+    resultMessage.setAttribute("aria-atomic", "true");
+    resultMessage.hidden = true;
+    card.append(resultMessage);
+    if (onResultRetry) {
+      const retry = document.createElement("button");
+      retry.className = "wabba-result-retry"; retry.type = "button";
+      retry.textContent = "Check result again"; retry.hidden = true;
+      retry.addEventListener("click", () => { void onResultRetry(); });
+      card.append(retry);
+    }
     root.append(css, card);
     document.body.append(host);
+    renderResult();
     scheduleReminder();
   };
   window.WabbaConnect = Object.freeze({
     mount,
     dismiss,
     setContext,
+    setResultState,
     open: () => {
       const host = document.getElementById("wabba-connect-launcher");
       if (!host || host.hidden) return false;

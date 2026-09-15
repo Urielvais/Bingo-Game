@@ -244,6 +244,39 @@ test('an ambiguous archive commit is discovered on retry without replaying post-
     assert.deepEqual(fixture.events, ['archive', 'retry']);
 });
 
+test('the live game listener checks only the match ID on winner and cleanup events', async () => {
+    const source = await readFile(new URL('../game.js', import.meta.url), 'utf8');
+    const beginning = source.indexOf('export function listenForGameUpdates(');
+    const end = source.indexOf('export function listenForPlayerUpdates(', beginning);
+    assert.ok(beginning >= 0 && end > beginning);
+    const checks = [];
+    const displayed = [];
+    let listener;
+    let resets = 0;
+    let unsubscribed = 0;
+    const fixtures = {
+        state: { unsubscribe: { players: () => { unsubscribed++; } } }, db: {},
+        prepareWabbaMatch: () => { resets++; },
+        checkWabbaResult: (...args) => { checks.push(args); return Promise.resolve(); },
+        doc: (_db, ...parts) => parts.join('/'),
+        onSnapshot: (ref, callback) => { assert.equal(ref, 'activeGames/game-42'); listener = callback; return () => {}; },
+        ui: { winnerModal: { classList: { contains: () => true } } },
+        renderWinnerModal: name => displayed.push(name),
+    };
+    const listen = new Function(...Object.keys(fixtures),
+        `${source.slice(beginning, end).replace('export function', 'function')}; return listenForGameUpdates;`
+    )(...Object.values(fixtures));
+    listen('game-42');
+    assert.equal(resets, 1);
+    listener({ exists: () => true, data: () => ({}) });
+    assert.deepEqual(checks, []);
+    listener({ exists: () => true, data: () => ({ winner: 'Same name', winnerId: 'firebase-alice' }) });
+    listener({ exists: () => false });
+    assert.deepEqual(checks, [['game-42'], ['game-42']], 'no browser winner, email or account ID is submitted');
+    assert.deepEqual(displayed, ['Same name']);
+    assert.equal(unsubscribed, 1);
+});
+
 async function loadEndedJoin({ active = true, recovery = true, cleanup } = {}) {
     const source = await readFile(new URL('../game.js', import.meta.url), 'utf8');
     const beginning = source.indexOf('export async function joinGame(');
@@ -256,6 +289,7 @@ async function loadEndedJoin({ active = true, recovery = true, cleanup } = {}) {
         doc: (_db, ...parts) => parts.join('/'),
         getDoc: async ref => ({ id: 'game-42', exists: () => ref.startsWith('pastGames/') || active, data: game }),
         cleanupEndedGame: async id => { events.push(`recover:${id}`); return cleanup ? cleanup(id) : recovery; },
+        checkWabbaResult: id => { events.push(`result:${id}`); return Promise.resolve(); },
         updateDoc: async () => events.push('remove-from-active-list'),
         arrayRemove: value => value,
         showView: view => events.push(`view:${view}`),
@@ -274,6 +308,7 @@ test('rejoining an ended active game retries archiving, while archive-only games
         const fixture = await loadEndedJoin({ active });
         await fixture.join('Same name', 'firebase-alice');
         assert.equal(fixture.events.includes('recover:game-42'), active);
+        assert.ok(fixture.events.includes('result:game-42'));
         assert.ok(fixture.events.includes('remove-from-active-list'));
         assert.equal(fixture.events.at(-1), 'view:home');
     }
