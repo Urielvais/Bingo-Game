@@ -46,7 +46,7 @@
     if (retry) retry.hidden = !["pending", "unavailable"].includes(resultState.status);
   };
   const setResultState = update => {
-    if (!update || !["idle", "checking", "pending", "win", "loss", "draw", "not_connected", "sign_in", "unavailable"].includes(update.status) ||
+    if (!update || !["idle", "checking", "pending", "win", "loss", "draw", "completed", "void", "not_connected", "sign_in", "unavailable"].includes(update.status) ||
         typeof update.message !== "string" || update.message.length > 320) throw new TypeError("Provide a result presentation state.");
     // Presentation only. API authorization never reads this state.
     resultState = { status: update.status, message: update.message };

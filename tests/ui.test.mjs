@@ -75,7 +75,7 @@ test('the native account link is usable immediately without an age dialog or cli
   let calls = 0;
   const ui = accountEntry(() => { calls++; return new Promise(() => {}); });
   assert.equal(calls, 1, 'the local SDK starts loading without an age selection or click');
-  assert.equal(ui.document.head.children[0].href, 'https://bingo.example/Bingo-Game/wabba-entry.css?v=widget-20260915-4');
+  assert.equal(ui.document.head.children[0].href, 'https://bingo.example/Bingo-Game/wabba-entry.css?v=widget-20260915-5');
   assert.equal(ui.entry.children[0].src, 'https://bingo.example/Bingo-Game/wabba-logo.png');
   assert.equal(ui.shell.tag, 'aside');
   assert.equal(ui.entry.tag, 'a');

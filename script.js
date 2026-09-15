@@ -1,5 +1,5 @@
 import { initializeFirebase, auth, db } from './firebase.js';
-import { setupWabba } from './wabba.js?v=widget-20260915-4';
+import { setupWabba } from './wabba.js?v=widget-20260915-5';
 import { assignUIElements, ui, updateAuthUI, openAuthModal, setupAuthModal, showView, showMessage, switchTab, renderInviteModal, switchLeaderboardMode } from './ui.js';
 import { handleAuthSubmit, handleLogout } from './auth.js';
 import * as game from './game.js';

@@ -4,7 +4,7 @@ export function mountWabbaEntry(loadLauncher, accountURL, { onResultRetry } = {}
   if (!document.getElementById('wabba-entry-styles')) {
     const css = document.createElement('link');
     css.id = 'wabba-entry-styles'; css.rel = 'stylesheet';
-    css.href = new URL('./wabba-entry.css?v=widget-20260915-4', import.meta.url).href;
+    css.href = new URL('./wabba-entry.css?v=widget-20260915-5', import.meta.url).href;
     document.head.append(css);
   }
   let shell = document.getElementById('wabba-entry-shell');

@@ -44,6 +44,28 @@ test('supports multiple games, multiplayer losses and draws without rewarding an
   }
 });
 
+test('hosted version 2 supports team wins, ranked scores and noncompetitive outcomes', async () => {
+  for (const outcome of ['win', 'loss', 'draw', 'completed', 'void']) {
+    const people = [{ gameUserId: 'alice', outcome, score: 10, rank: 1, teamId: 'red' },
+      { gameUserId: 'bob', outcome, score: 12, rank: 1, teamId: 'red' }];
+    const f = setup({ game: 'racing', fetch: async url => {
+      assert.equal(url, 'https://game-server.test/v1/sdk/games/racing/matches/match-42/result');
+      return Response.json(record({ schemaVersion: 2, evidence: 'partner_report', participants: people,
+        outcome, won: outcome === 'win', winnerIds: outcome === 'win' ? ['alice', 'bob'] : [] }));
+    } });
+    const state = await f.client.watch('match-42');
+    assert.equal(state.status, outcome);
+    assert.equal(state.result.participants[0].score, 10);
+    assert.equal(state.result.participants[0].teamId, 'red');
+    assert.equal(state.result.evidence, 'partner_report');
+  }
+});
+
+test('a conflicting result is not confused with an unlinked account', async () => {
+  const f = setup({ fetch: async () => Response.json({ code: 'game_result_conflict' }, { status: 409 }) });
+  assert.equal((await f.client.watch('match-42')).status, 'unavailable');
+});
+
 test('waits for saved records with bounded retries and a manual retry after exhaustion', async () => {
   let calls = 0;
   const f = setup({ maxAttempts: 2, fetch: async () => {

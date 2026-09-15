@@ -4,7 +4,7 @@ import { db, storage } from './firebase.js';
 import { ui, showMessage, showView, renderBingoCard, renderPlayerProgress, renderRarePhrases, renderActiveGamesList, renderWinnerModal, renderCallerUI } from './ui.js';
 import { state } from './script.js';
 import { createWinnerRecord, archiveRecordedGame, retryGameArchive } from './recorded-result.mjs';
-import { checkWabbaResult, prepareWabbaMatch } from './wabba.js?v=widget-20260915-4';
+import { checkWabbaResult, prepareWabbaMatch } from './wabba.js?v=widget-20260915-5';
 
 export function getPhrasesFromInput() {
     if (!ui.phrasesInput) return [];

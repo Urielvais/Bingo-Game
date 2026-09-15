@@ -4,7 +4,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { randomBytes, randomUUID } from 'node:crypto';
 import { runInNewContext } from 'node:vm';
 import { Script } from 'node:vm';
-import { WabbaResultClient } from '../wabba-sdk/sdk/wabba-results.v1.mjs';
+import { WabbaGameClient } from '../wabba-sdk/sdk/wabba-client.v1.mjs';
 
 // Exercise actual Bingo sources with separate per-tab sessionStorage and shared
 // origin localStorage. These protocol tests need only Node, not the Wabba repo,
@@ -48,7 +48,7 @@ function setup(configOverrides = {}, { failMount = false, failSdk = false, stall
       assert.equal(options.credentials, 'omit');
       assert.equal(options.redirect, 'error');
       assert.equal(options.cache, 'no-store');
-      assert.equal(url, 'https://adapter.test/wabba/matches/match-42/result');
+      assert.equal(url, 'https://adapter.test/v1/sdk/games/bingo/matches/match-42/result');
       return { ok: true, status: 200, json: async () => ({
         gameId: 'gam_bingo', externalMatchId: 'match-42', gameUserId: uid, wabbaPlayerId: `plr_${uid}`,
         connected: true, email: `${uid}@example.test`, emailVerified: true,
@@ -67,6 +67,7 @@ function setup(configOverrides = {}, { failMount = false, failSdk = false, stall
     const uid = options.headers.Authorization.slice('Bearer token-'.length);
     requests.push({ url, uid, body });
     if (url.endsWith('/start')) {
+      assert.equal(body.return_url, 'https://bingo.example/Bingo-Game/wabba-callback.html');
       if (rejectStart) { rejectStart = false; return { ok: false, status: 409, json: async () => ({ message: 'Start a new connection.' }) }; }
       const key = `${uid}:${body.request_key}`;
       if (!flows.has(key)) flows.set(key, {
@@ -85,7 +86,7 @@ function setup(configOverrides = {}, { failMount = false, failSdk = false, stall
     assert.equal(body.link_session_id, row.sessionId);
     row.completed = true;
     if (failFinish) { failFinish = false; throw new TypeError('Response lost after server completion'); }
-    return { ok: true, json: async () => ({ connected: confirmFinish }) };
+    return { ok: true, json: async () => ({ connected: confirmFinish, gameId: 'gam_bingo', gameUserId: uid, wabbaPlayerId: `plr_${uid}` }) };
   };
   function tab(uid = 'alice', session = storage()) {
     const auth = { currentUser: { uid, getIdToken: async () => { tokenRequests.push(uid); return `token-${uid}`; } } };
@@ -119,10 +120,10 @@ function setup(configOverrides = {}, { failMount = false, failSdk = false, stall
       } },
     };
     const context = {
-      WabbaResultClient: class extends WabbaResultClient {
-        constructor(options) { super({ ...options, fetch: transport }); }
+      WabbaGameClient: class extends WabbaGameClient {
+        constructor(options) { super({ ...options, fetch: transport, localStorage: local, sessionStorage: session, now: () => now, randomUUID }); }
       },
-      wabbaConfig: configOverrides === null ? null : { enabled: true, webOrigin: 'https://wabba.test', adapterOrigin: 'https://adapter.test', ...configOverrides },
+      wabbaConfig: configOverrides === null ? null : { enabled: true, webOrigin: 'https://wabba.test', apiOrigin: 'https://adapter.test', ...configOverrides },
       mountWabbaEntry: (callback, destination) => {
         if (failMount) { failMount = false; throw new Error('Optional UI unavailable'); }
         enhance = callback; accountURL = destination; mounts += 1;
@@ -213,7 +214,7 @@ test('result checks wait for connection, read with the signed-in token and clear
 });
 
 test('missing result backend does not invent wins or block the connection card', async () => {
-  const f = setup({ adapterOrigin: null });
+  const f = setup({ apiOrigin: null });
   f.local.setItem('wabba:bingo:connected:alice', 'true');
   const game = f.tab();
   await game.checkResult('match-42');
@@ -297,7 +298,7 @@ test('definite start rejection permits a fresh next attempt; expired callbacks f
   const f = setup();
   const game = f.tab();
   f.rejectNextStart();
-  await assert.rejects(game.start(), /Start a new connection/);
+  await assert.rejects(game.start(), /Could not connect/);
   assert.equal(game.session.values.size, 0);
   const started = await game.start();
   assert.notEqual(f.requests[0].body.request_key, f.requests[1].body.request_key);
@@ -331,7 +332,7 @@ test('the widget mounts before Firebase is ready and accepts authentication late
   assert.equal(game.mountCount(), 1);
   await game.loadSdk();
   assert.equal(game.sdkMountCount(), 1);
-  await assert.rejects(game.start(), /Sign in to Bingo/);
+  await assert.rejects(game.start(), /Sign in to your game/);
   assert.equal(f.tokenRequests.length, 0);
   assert.equal(f.requests.length, 0);
   assert.equal(game.setupAgain(), false);
@@ -344,8 +345,8 @@ test('the widget mounts before Firebase is ready and accepts authentication late
 test('Bingo boots the local widget separately from its Firebase module graph', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
   const entry = readFileSync(new URL('../wabba-entry.js', import.meta.url), 'utf8');
-  assert.match(html, /<script type="module" src="wabba-entry\.js\?v=widget-20260915-4" async><\/script>/);
-  assert.match(entry, /import \{ setupWabba \} from '\.\/wabba\.js\?v=widget-20260915-4'/);
+  assert.match(html, /<script type="module" src="wabba-entry\.js\?v=widget-20260915-5" async><\/script>/);
+  assert.match(entry, /import \{ setupWabba \} from '\.\/wabba\.js\?v=widget-20260915-5'/);
   assert.match(entry, /setupWabba\(\)/);
   assert.doesNotMatch(entry, /firebase\.js|gstatic|fetch\(/);
   assert.doesNotMatch(html, /wabba-connect-header/);
@@ -354,7 +355,7 @@ test('Bingo boots the local widget separately from its Firebase module graph', (
 test('the complete styled card exists in initial HTML even with every script removed', () => {
   const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8')
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
-  assert.match(html, /<link id="wabba-entry-styles" rel="stylesheet" href="\.\/wabba-entry\.css\?v=widget-20260915-4">/);
+  assert.match(html, /<link id="wabba-entry-styles" rel="stylesheet" href="\.\/wabba-entry\.css\?v=widget-20260915-5">/);
   const card = html.match(/<aside id="wabba-entry-shell"[\s\S]*?<\/aside>/)?.[0];
   assert.ok(card);
   assert.match(card, /<a id="wabba-local-entry" class="wabba-local-entry"/);
@@ -379,11 +380,11 @@ test('the complete styled card exists in initial HTML even with every script rem
 test('all Wabba bootstrap imports use one fresh release URL, including auth injection', () => {
   for (const name of ['wabba-entry.js', 'script.js', 'wabba-callback.js', 'ui.js']) {
     const code = readFileSync(new URL(`../${name}`, import.meta.url), 'utf8');
-    assert.match(code, /from '\.\/wabba\.js\?v=widget-20260915-4'/);
+    assert.match(code, /from '\.\/wabba\.js\?v=widget-20260915-5'/);
   }
   const code = readFileSync(new URL('../wabba.js', import.meta.url), 'utf8');
-  assert.match(code, /from '\.\/wabba-config\.js\?v=widget-20260915-4'/);
-  assert.match(code, /from '\.\/wabba-entry-view\.js\?v=widget-20260915-4'/);
+  assert.match(code, /from '\.\/wabba-config\.js\?v=widget-20260915-5'/);
+  assert.match(code, /from '\.\/wabba-entry-view\.js\?v=widget-20260915-5'/);
   assert.doesNotMatch(code, /wabba-age-gate/);
 });
 
@@ -510,7 +511,7 @@ test('the per-user connection preference never authorizes a start or replaces Fi
   game.auth.currentUser = null;
   game.setupAgain();
   assert.equal(game.entryContexts.at(-1).connected, false);
-  await assert.rejects(game.start(), /Sign in to Bingo/);
+  await assert.rejects(game.start(), /Sign in to your game/);
   assert.equal(f.requests.length, 0);
   assert.equal(f.tokenRequests.length, 0);
   game.updateContext({ connected: true });
@@ -536,7 +537,7 @@ test('SDK mounts once with local assets and never requests a token before connec
   assert.equal(game.assets.length, 0);
   assert.equal(f.requests.length, 0);
   await game.loadSdk();
-  assert.deepEqual(game.assets, ['https://bingo.example/Bingo-Game/wabba-sdk/sdk/wabba-connect.v1.js?v=widget-20260915-4']);
+  assert.deepEqual(game.assets, ['https://bingo.example/Bingo-Game/wabba-sdk/sdk/wabba-connect.v1.js?v=widget-20260915-5']);
   assert.equal(game.scripts[0].dataset.wabbaOrigin, 'https://wabba.test');
   assert.equal(game.destination(), 'https://wabba.test/account?game=bingo');
   assert.equal(game.isDismissible(), false, 'Bingo keeps the shared card visible without an X');
@@ -552,13 +553,13 @@ test('shipped configuration displays the SDK without a pretend live adapter', ()
   const context = {};
   runInNewContext(configSource, context);
   assert.equal(context.wabbaConfig.enabled, true);
-  assert.equal(context.wabbaConfig.adapterOrigin, null);
+  assert.equal(context.wabbaConfig.apiOrigin, null);
 });
 
 test('missing or unsafe adapter opens the account page without an intercepted connect action', async () => {
-  for (const adapterOrigin of [null, undefined, 'http://localhost:8080', 'https://adapter.test/path',
+  for (const apiOrigin of [null, undefined, 'http://localhost:8080', 'https://adapter.test/path',
     'https://adapter.test#fragment', 'https://adapter.test?secret=no', 'https://user@adapter.test']) {
-    const f = setup({ adapterOrigin });
+    const f = setup({ apiOrigin });
     const game = f.tab();
     assert.equal(game.mountCount(), 1);
     await game.loadSdk();
@@ -566,7 +567,7 @@ test('missing or unsafe adapter opens the account page without an intercepted co
     assert.equal(game.hasConnectionHandler(), false, 'the SDK must use ordinary account navigation');
     assert.equal(game.destination(), 'https://wabba.test/account?game=bingo');
     f.local.getItem = () => { throw new Error('Must not read callback storage without a configured adapter'); };
-    await assert.rejects(game.finish({ state: 'x'.repeat(43) }), /linking is not available.*not been connected/);
+    await assert.rejects(game.finish({ state: 'x'.repeat(43) }), /API is not configured.*not been connected/);
     assert.equal(f.tokenRequests.length, 0);
     assert.equal(f.requests.length, 0);
     assert.equal(game.session.values.size, 0);
@@ -686,5 +687,5 @@ test('start and finish both use cookie-free bearer transport with redirect prote
   const started = await f.tab().start();
   await f.tab().finish(f.callback(started.state));
   // The transport above asserts the real adapter options on both requests.
-  assert.deepEqual(f.requests.map(request => new URL(request.url).pathname), ['/wabba/link/start', '/wabba/link/finish']);
+  assert.deepEqual(f.requests.map(request => new URL(request.url).pathname), ['/v1/sdk/games/bingo/link/start', '/v1/sdk/games/bingo/link/finish']);
 });
